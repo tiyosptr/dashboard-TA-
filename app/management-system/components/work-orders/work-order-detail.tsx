@@ -1,0 +1,369 @@
+'use client';
+
+import { X, User, Clock, MapPin, CheckCircle, Circle, MessageSquare, Package, AlertCircle, Edit, Trash2 } from 'lucide-react';
+import { WorkOrder, WorkOrderStatus } from '@/types';
+import { useState } from 'react';
+
+interface WorkOrderDetailProps {
+  workOrder: WorkOrder;
+  onClose: () => void;
+  onStatusChange: (workOrderId: string, newStatus: WorkOrderStatus) => void;
+}
+
+export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: WorkOrderDetailProps) {
+  const [newNote, setNewNote] = useState('');
+  const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'notes'>('details');
+
+  const handleAddNote = () => {
+    if (newNote.trim()) {
+      console.log('Adding note:', newNote);
+      setNewNote('');
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Pending': return 'bg-gray-100 text-gray-700 border border-gray-300';
+      case 'On-Solving': return 'bg-blue-100 text-blue-700 border border-blue-300';
+      case 'Completed': return 'bg-green-100 text-green-700 border border-green-300';
+      case 'On-Hold': return 'bg-yellow-100 text-yellow-700 border border-yellow-300';
+      default: return 'bg-gray-100 text-gray-700 border border-gray-300';
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'Critical': return 'bg-red-500 text-white';
+      case 'High': return 'bg-orange-500 text-white';
+      case 'Medium': return 'bg-yellow-500 text-white';
+      case 'Low': return 'bg-green-500 text-white';
+      default: return 'bg-gray-500 text-white';
+    }
+  };
+
+  const completedTasks = workOrder.tasks?.filter(t => t.completed).length || 0;
+  const totalTasks = workOrder.tasks?.length || 0;
+  const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-2 flex-wrap">
+              <h2 className="text-2xl font-bold text-white">{String(workOrder.id)}</h2>
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPriorityColor(workOrder.priority)}`}>
+                {workOrder.priority}
+              </span>
+
+              {/* Status Dropdown */}
+              <select
+                value={workOrder.status}
+                onChange={(e) => onStatusChange(workOrder.id as string, e.target.value as WorkOrderStatus)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-white ${getStatusColor(workOrder.status)}`}
+              >
+                <option value="Pending">Pending</option>
+                <option value="On-Solving">On Solving</option>
+                <option value="On-Hold">On Hold</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+            <p className="text-blue-100">{workOrder.machine_name} • {workOrder.location}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-lg transition-colors"
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 bg-gray-50 px-6">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`px-6 py-3 border-b-2 font-medium transition-colors ${activeTab === 'details'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+          >
+            Details
+          </button>
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`px-6 py-3 border-b-2 font-medium transition-colors ${activeTab === 'tasks'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+          >
+            Tasks ({completedTasks}/{totalTasks})
+          </button>
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`px-6 py-3 border-b-2 font-medium transition-colors ${activeTab === 'notes'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+          >
+            Notes ({workOrder.notes?.length || 0})
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {activeTab === 'details' && (
+            <div className="space-y-6">
+              {/* Description */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Description</h3>
+                <p className="text-gray-900 bg-gray-50 p-4 rounded-lg">{workOrder.description}</p>
+              </div>
+
+              {/* Info Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <User className="text-blue-600" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Assigned To</p>
+                      <p className="font-semibold text-gray-900">{workOrder.assigned_to}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <Clock className="text-green-600" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Scheduled</p>
+                      <p className="font-semibold text-gray-900">
+                        {new Date(workOrder.schedule_date).toLocaleString('id-ID', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-purple-100 rounded-lg">
+                      <MapPin className="text-purple-600" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Location</p>
+                      <p className="font-semibold text-gray-900">{workOrder.location}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-yellow-100 rounded-lg">
+                      <AlertCircle className="text-yellow-600" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Type</p>
+                      <p className="font-semibold text-gray-900">{workOrder.type}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-orange-100 rounded-lg">
+                      <Clock className="text-orange-600" size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Estimated Duration</p>
+                      <p className="font-semibold text-gray-900">{workOrder.estimated_duration}</p>
+                    </div>
+                  </div>
+
+                  {workOrder.completed_at && (
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-green-100 rounded-lg">
+                        <CheckCircle className="text-green-600" size={20} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-500">Completed At</p>
+                        <p className="font-semibold text-gray-900">
+                          {new Date(workOrder.completed_at).toLocaleString('id-ID')}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Required Parts */}
+              {workOrder.requiredParts && workOrder.requiredParts.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Package size={18} />
+                    Required Parts
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    {workOrder.requiredParts.map((part) => (
+                      <div key={part.id} className="flex items-center justify-between p-3 bg-white rounded border border-gray-200">
+                        <div>
+                          <p className="font-medium text-gray-900">{part.name}</p>
+                          <p className="text-sm text-gray-500">Quantity: {part.quantity}</p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${part.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          }`}>
+                          {part.available ? 'Available' : 'Out of Stock'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Progress */}
+              {totalTasks > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Overall Progress</h3>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        {completedTasks} of {totalTasks} tasks completed
+                      </span>
+                      <span className="text-sm font-bold text-blue-600">{Math.round(progress)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div
+                        className="bg-blue-600 h-3 rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'tasks' && (
+            <div className="space-y-3">
+              {!workOrder.tasks || workOrder.tasks.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <Circle size={48} className="mx-auto mb-4 opacity-50" />
+                  <p>No tasks defined for this work order</p>
+                </div>
+              ) : (
+                workOrder.tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className={`flex items-start gap-4 p-4 rounded-lg border-2 transition-all ${task.completed
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-white border-gray-200 hover:border-blue-300'
+                      }`}
+                  >
+                    <button
+                      className={`mt-1 flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${task.completed
+                          ? 'bg-green-600 border-green-600'
+                          : 'border-gray-300 hover:border-blue-500'
+                        }`}
+                    >
+                      {task.completed && <CheckCircle size={18} className="text-white" />}
+                    </button>
+                    <div className="flex-1">
+                      <p className={`font-medium ${task.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                        {task.description}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {activeTab === 'notes' && (
+            <div className="space-y-6">
+              {/* Add Note */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Add Note</h3>
+                <textarea
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  rows={3}
+                  placeholder="Write a note about this work order..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                />
+                <button
+                  onClick={handleAddNote}
+                  disabled={!newNote.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Add Note
+                </button>
+              </div>
+
+              {/* Notes List */}
+              <div className="space-y-4">
+                {!workOrder.notes || workOrder.notes.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <MessageSquare size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>No notes yet</p>
+                  </div>
+                ) : (
+                  workOrder.notes.map((note) => (
+                    <div key={note.id} className="bg-white border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                            {note.author.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">{note.author}</p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(note.timestamp).toLocaleString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-gray-700 ml-10">{note.text}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+          <button
+            className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
+          >
+            <Trash2 size={18} />
+            Delete Work Order
+          </button>
+
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors font-medium"
+            >
+              Close
+            </button>
+            <button
+              className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <Edit size={18} />
+              Edit Work Order
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

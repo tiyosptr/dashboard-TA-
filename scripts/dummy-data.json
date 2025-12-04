@@ -1,0 +1,341 @@
+{
+    "description": "Data dummy untuk testing actual output system",
+    "data_items": [
+        {
+            "sn": "SN-PN123-001",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T07:15:00Z"
+        },
+        {
+            "sn": "SN-PN123-002",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T07:30:00Z"
+        },
+        {
+            "sn": "SN-PN123-003",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T07:45:00Z"
+        },
+        {
+            "sn": "SN-PN123-004",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Testing",
+            "status": "reject",
+            "created_at": "2024-11-28T07:50:00Z"
+        },
+        {
+            "sn": "SN-PN123-005",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T08:10:00Z"
+        },
+        {
+            "sn": "SN-PN123-006",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T08:25:00Z"
+        },
+        {
+            "sn": "SN-PN123-007",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T08:40:00Z"
+        },
+        {
+            "sn": "SN-PN123-008",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Packaging",
+            "status": "pass",
+            "created_at": "2024-11-28T08:55:00Z"
+        },
+        {
+            "sn": "SN-PN123-009",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T09:15:00Z"
+        },
+        {
+            "sn": "SN-PN123-010",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T09:30:00Z"
+        },
+        {
+            "sn": "SN-PN123-011",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Testing",
+            "status": "reject",
+            "created_at": "2024-11-28T09:45:00Z"
+        },
+        {
+            "sn": "SN-PN123-012",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T10:10:00Z"
+        },
+        {
+            "sn": "SN-PN123-013",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T10:30:00Z"
+        },
+        {
+            "sn": "SN-PN123-014",
+            "pn": "PN123",
+            "wo": "WO2024001",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Packaging",
+            "status": "reject",
+            "created_at": "2024-11-28T10:50:00Z"
+        },
+        {
+            "sn": "SN-PN456-001",
+            "pn": "PN456",
+            "wo": "WO2024003",
+            "name_line": "Line C",
+            "line_id": "c3d4e5f6-a7b8-4901-c234-345678901abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T11:15:00Z"
+        },
+        {
+            "sn": "SN-PN456-002",
+            "pn": "PN456",
+            "wo": "WO2024003",
+            "name_line": "Line C",
+            "line_id": "c3d4e5f6-a7b8-4901-c234-345678901abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T11:30:00Z"
+        },
+        {
+            "sn": "SN-PN456-003",
+            "pn": "PN456",
+            "wo": "WO2024003",
+            "name_line": "Line C",
+            "line_id": "c3d4e5f6-a7b8-4901-c234-345678901abc",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T11:45:00Z"
+        },
+        {
+            "sn": "SN-PN456-004",
+            "pn": "PN456",
+            "wo": "WO2024003",
+            "name_line": "Line C",
+            "line_id": "c3d4e5f6-a7b8-4901-c234-345678901abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T12:10:00Z"
+        },
+        {
+            "sn": "SN-PN456-005",
+            "pn": "PN456",
+            "wo": "WO2024003",
+            "name_line": "Line C",
+            "line_id": "c3d4e5f6-a7b8-4901-c234-345678901abc",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T12:30:00Z"
+        },
+        {
+            "sn": "SN-PN1234-001",
+            "pn": "PN1234",
+            "wo": "WO2024002",
+            "name_line": "Line B",
+            "line_id": "b2c3d4e5-f6a7-4890-b123-234567890def",
+            "name_process": "Assembly",
+            "status": "reject",
+            "created_at": "2024-11-28T13:15:00Z"
+        },
+        {
+            "sn": "SN-PN1234-002",
+            "pn": "PN1234",
+            "wo": "WO2024002",
+            "name_line": "Line B",
+            "line_id": "b2c3d4e5-f6a7-4890-b123-234567890def",
+            "name_process": "Assembly",
+            "status": "reject",
+            "created_at": "2024-11-28T13:30:00Z"
+        },
+        {
+            "sn": "SN-PN1234-003",
+            "pn": "PN1234",
+            "wo": "WO2024002",
+            "name_line": "Line B",
+            "line_id": "b2c3d4e5-f6a7-4890-b123-234567890def",
+            "name_process": "Testing",
+            "status": "reject",
+            "created_at": "2024-11-28T13:45:00Z"
+        },
+        {
+            "sn": "SN-PN1234-004",
+            "pn": "PN1234",
+            "wo": "WO2024002",
+            "name_line": "Line B",
+            "line_id": "b2c3d4e5-f6a7-4890-b123-234567890def",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T13:50:00Z"
+        },
+        {
+            "sn": "SN-PN789-001",
+            "pn": "PN789",
+            "wo": "WO2024004",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T14:10:00Z"
+        },
+        {
+            "sn": "SN-PN789-002",
+            "pn": "PN789",
+            "wo": "WO2024004",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "reject",
+            "created_at": "2024-11-28T14:25:00Z"
+        },
+        {
+            "sn": "SN-PN789-003",
+            "pn": "PN789",
+            "wo": "WO2024004",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T14:40:00Z"
+        },
+        {
+            "sn": "SN-PN789-004",
+            "pn": "PN789",
+            "wo": "WO2024004",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Packaging",
+            "status": "reject",
+            "created_at": "2024-11-28T14:55:00Z"
+        },
+        {
+            "sn": "SN-PN789-005",
+            "pn": "PN789",
+            "wo": "WO2024004",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Assembly",
+            "status": "pass",
+            "created_at": "2024-11-28T15:10:00Z"
+        },
+        {
+            "sn": "SN-PN789-006",
+            "pn": "PN789",
+            "wo": "WO2024004",
+            "name_line": "Line A",
+            "line_id": "a1b2c3d4-e5f6-4789-a012-123456789abc",
+            "name_process": "Testing",
+            "status": "pass",
+            "created_at": "2024-11-28T15:30:00Z"
+        }
+    ],
+    "expected_actual_output": {
+        "PN123": {
+            "07:00-08:00": {
+                "output": 3,
+                "reject": 1
+            },
+            "08:00-09:00": {
+                "output": 4,
+                "reject": 0
+            },
+            "09:00-10:00": {
+                "output": 2,
+                "reject": 1
+            },
+            "10:00-11:00": {
+                "output": 2,
+                "reject": 1
+            }
+        },
+        "PN456": {
+            "11:00-12:00": {
+                "output": 3,
+                "reject": 0
+            },
+            "12:00-13:00": {
+                "output": 2,
+                "reject": 0
+            }
+        },
+        "PN1234": {
+            "13:00-14:00": {
+                "output": 1,
+                "reject": 3
+            }
+        },
+        "PN789": {
+            "14:00-15:00": {
+                "output": 2,
+                "reject": 2
+            },
+            "15:00-16:00": {
+                "output": 2,
+                "reject": 0
+            }
+        }
+    }
+}

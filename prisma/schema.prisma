@@ -1,0 +1,170 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model ActualOutput {
+  id            BigInt   @id @default(autoincrement())
+  lineId        String?  @map("line_id") @db.Uuid
+  shiftNumber   Int?     @default(1) @map("shift_number")
+  hourSlot      String?  @map("hour_slot")
+  output        Decimal? @default(0) @db.Decimal
+  reject        Decimal? @default(0) @db.Decimal
+  targetOutput  Decimal? @default(1000) @map("target_output") @db.Decimal
+  date          DateTime? @default(now()) @db.Date
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  pn            String?
+
+  @@unique([lineId, shiftNumber, hourSlot, date, pn], name: "actual_output_line_id_shift_number_hour_slot_date_pn_key")
+  @@index([pn], name: "idx_actual_output_pn")
+  @@index([lineId, shiftNumber, date], name: "idx_actual_output_line_shift")
+  @@index([hourSlot], name: "idx_actual_output_hour")
+  @@map("actual_output")
+}
+
+model DataItem {
+  sn          String    @id
+  id          BigInt?
+  pn          String?
+  wo          String?
+  nameLine    String?   @map("name_line")
+  processId   String?   @default(dbgenerated("gen_random_uuid()")) @map("process_id") @db.Uuid
+  lineId      String?   @map("line_id") @db.Uuid
+  nameProcess String?   @map("name_process")
+  status      String?
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([pn], name: "idx_data_items_pn")
+  @@map("data_items")
+}
+
+model Line {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String?
+  status             String?
+  totalRunningHours  Decimal? @map("total_running_hours") @db.Decimal
+  processId          String?  @default(dbgenerated("gen_random_uuid()")) @map("process_id") @db.Uuid
+  nameProcess        String?  @map("name_process")
+
+  workOrders WorkOrder[]
+
+  @@map("line")
+}
+
+model Machine {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nameMachine        String?   @map("name_machine")
+  nameLine           String?   @map("name_line")
+  status             String?
+  nextMaintenance    DateTime? @map("next_maintenance") @db.Timestamp(6)
+  lastMaintenance    DateTime? @map("last_maintenance") @db.Timestamp(6)
+  totalRunningHours  String?   @map("total_running_hours")
+  nameProcess        String?   @map("name_process")
+  processId          String?   @default(dbgenerated("gen_random_uuid()")) @map("process_id") @db.Uuid
+  lineId             String?   @default(dbgenerated("gen_random_uuid()")) @map("line_id") @db.Uuid
+
+  notifications Notification[]
+  workOrders    WorkOrder[]
+
+  @@map("machine")
+}
+
+model Note {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workOrderId  String?   @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
+  text         String?
+  author       String?
+  timestamp    DateTime? @db.Timestamp(6)
+
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@map("note")
+}
+
+model Notification {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type            String?
+  severity        String?
+  machineId       String?   @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
+  machineName     String?   @map("machine_name")
+  messages        String?
+  read            String?
+  acknowladged    String?
+  acknowladgedBy  String?   @map("acknowladged_by")
+  acknowladgedAt  DateTime? @map("acknowladged_at") @db.Timestamp(6)
+  duration        String?
+  startAt         DateTime? @map("start_at") @db.Timestamp(6)
+  doneAt          DateTime? @map("done_at") @db.Timestamp(6)
+
+  machine Machine? @relation(fields: [machineId], references: [id])
+
+  @@map("notification")
+}
+
+model Process {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name     String?
+  lineId   String?  @default(dbgenerated("gen_random_uuid()")) @map("line_id") @db.Uuid
+  nameLine String?  @map("name_line")
+  index    Decimal? @db.Decimal
+
+  @@map("process")
+}
+
+model Task {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workOrderId  String? @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
+  description  String?
+  completed    String?
+  completedAt  String? @map("completed_at")
+
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@map("task")
+}
+
+model Technician {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String?
+  specialization String?
+  contactInfo    String?  @map("contact_info")
+  isActive       Boolean? @map("is_active")
+
+  @@map("technician")
+}
+
+model WorkOrder {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type              String?
+  priority          String?
+  machineId         String?   @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
+  machineName       String?   @map("machine_name")
+  lineId            String?   @default(dbgenerated("gen_random_uuid()")) @map("line_id") @db.Uuid
+  nameLine          String?   @map("name_line")
+  status            String?
+  assignedTo        String?   @map("assigned_to")
+  createdAt         DateTime? @map("created_at") @db.Timestamp(6)
+  scheduleDate      DateTime? @map("schedule_date") @db.Timestamp(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamp(6)
+  estimatedDuration String?   @map("estimated_duration")
+  actualDuration    String?   @map("actual_duration")
+  description       String?
+  workOrderCode     String?   @map("work_order_code")
+
+  machine Machine? @relation(fields: [machineId], references: [id])
+  line    Line?    @relation(fields: [lineId], references: [id])
+  notes   Note[]
+  tasks   Task[]
+
+  @@map("work_order")
+}

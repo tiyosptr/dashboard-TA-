@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ========================================
+   RESPONSIVE ZOOM & SCALE SUPPORT
+   ======================================== */
+
+/* Base viewport setup - allow scroll when content overflows */
+html {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
+/* Ensure grid items can shrink properly */
+.grid>div {
+  min-width: 0;
+}
+
+/* Make charts responsive within their containers */
+canvas {
+  max-width: 100% !important;
+  display: block;
+}
+
+/* Ensure flex containers don't overflow */
+.flex-1 {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Smooth scaling for all elements */
+* {
+  box-sizing: border-box;
+}
+
+/* Prevent text overflow in small containers */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Ensure components scale text properly at different zoom levels */
+@media screen {
+  html {
+    font-size: clamp(12px, 1vw + 8px, 16px);
+  }
+}
