@@ -2,14 +2,13 @@
 
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { ChevronDown } from 'lucide-react';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 interface HistoryChartProps {
-  width?: string | number;   // bisa diatur dari page
-  height?: string | number;  // bisa diatur dari page
-  className?: string;        // tambahan class styling
+  width?: string | number;
+  height?: string | number;
+  className?: string;
 }
 
 export default function HistoryChart({ width = '100%', height = '100%', className = '' }: HistoryChartProps) {
@@ -17,52 +16,49 @@ export default function HistoryChart({ width = '100%', height = '100%', classNam
     labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun'],
     datasets: [
       {
-        label: 'Maintenance',
+        label: 'Maint',
         data: [80, 100, 90, 110, 95, 140],
         borderColor: '#5B7FFF',
         backgroundColor: '#5B7FFF',
-        borderWidth: 2,
+        borderWidth: 1.5,
         tension: 0.4,
-        pointRadius: 4,
-        pointHoverRadius: 6,
+        pointRadius: 2,
       },
       {
-        label: 'Downtime',
+        label: 'Down',
         data: [120, 110, 140, 100, 130, 90],
         borderColor: '#A78BFA',
         backgroundColor: '#A78BFA',
-        borderWidth: 2,
+        borderWidth: 1.5,
         tension: 0.4,
-        pointRadius: 4,
-        pointHoverRadius: 6,
+        pointRadius: 2,
       },
       {
         label: 'Reject',
         data: [140, 130, 110, 150, 120, 145],
         borderColor: '#FF6B9D',
         backgroundColor: '#FF6B9D',
-        borderWidth: 2,
+        borderWidth: 1.5,
         tension: 0.4,
-        pointRadius: 4,
-        pointHoverRadius: 6,
+        pointRadius: 2,
       },
     ],
   };
 
   const options = {
     responsive: true,
-    maintainAspectRatio: false, // agar chart mengikuti ukuran parent
+    maintainAspectRatio: false,
     plugins: {
       legend: {
         display: true,
         position: 'bottom' as const,
         labels: {
-          boxWidth: 12,
-          boxHeight: 12,
+          boxWidth: 6,
+          boxHeight: 6,
           usePointStyle: true,
           pointStyle: 'circle',
-          padding: 10,
-          font: { size: 11 },
+          padding: 4,
+          font: { size: 7 },
         },
       },
       tooltip: {
@@ -71,38 +67,39 @@ export default function HistoryChart({ width = '100%', height = '100%', classNam
         bodyColor: '#000',
         borderColor: '#e5e7eb',
         borderWidth: 1,
-        padding: 12,
+        padding: 6,
+        titleFont: { size: 8 },
+        bodyFont: { size: 8 },
       },
     },
     scales: {
       x: {
         grid: { display: false },
         border: { display: false },
-        ticks: { font: { size: 11 } },
+        ticks: { font: { size: 8 } },
       },
       y: {
         min: 0,
         max: 210,
         grid: { color: '#f0f0f0' },
         border: { display: false },
-        ticks: { stepSize: 70, font: { size: 11 } },
+        ticks: { stepSize: 70, font: { size: 8 } },
       },
     },
   };
 
   return (
     <div
-      className={`bg-white rounded-xl shadow-sm p-3 sm:p-4 flex flex-col h-full w-full ${className}`}
+      className={`bg-white rounded-lg shadow-sm p-1.5 flex flex-col h-full w-full overflow-hidden ${className}`}
       style={{ width, height }}
     >
-      <div className="flex items-center justify-between mb-2 sm:mb-3">
-        <h2 className="text-xs sm:text-sm font-semibold text-gray-600 tracking-wide">HISTORY</h2>
-        <button className="flex items-center gap-1 sm:gap-2 px-2 py-1 sm:px-3 sm:py-1.5 text-xs sm:text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-          This Day <ChevronDown size={14} className="sm:w-4 sm:h-4" />
-        </button>
+      {/* Header */}
+      <div className="mb-0.5 flex-shrink-0">
+        <h2 className="text-[9px] font-semibold text-gray-600">HISTORY</h2>
       </div>
 
-      <div className="flex-1 min-h-[180px]">
+      {/* Chart */}
+      <div className="flex-1 min-h-0">
         <Line data={data} options={options} />
       </div>
     </div>

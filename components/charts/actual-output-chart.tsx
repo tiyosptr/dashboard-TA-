@@ -168,9 +168,9 @@ export default function ActualOutput({
 
   if (loading) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm p-3 sm:p-4 flex flex-col h-full w-full ${className}`}>
+      <div className={`bg-white rounded-lg shadow-sm p-1.5 flex flex-col h-full w-full overflow-hidden ${className}`}>
         <div className="flex items-center justify-center h-full">
-          <div className="text-gray-500">Loading...</div>
+          <div className="text-gray-500 text-xs">Loading...</div>
         </div>
       </div>
     );
@@ -178,58 +178,52 @@ export default function ActualOutput({
 
   if (error) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm p-3 sm:p-4 flex flex-col h-full w-full ${className}`}>
+      <div className={`bg-white rounded-lg shadow-sm p-1.5 flex flex-col h-full w-full overflow-hidden ${className}`}>
         <div className="flex items-center justify-center h-full">
-          <div className="text-red-500">Error: {error}</div>
+          <div className="text-red-500 text-xs">Error: {error}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className={`bg-white rounded-lg shadow-sm p-3 sm:p-4 flex flex-col h-full w-full ${className}`}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold text-gray-600 tracking-wide">ACTUAL OUTPUT</h2>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={fetchData}
-            className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800 transition-colors"
-            title="Refresh data"
-          >
-            🔄
-          </button>
-          <button className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            Shift {shiftNumber} <ChevronDown size={16} />
+    <div className={`bg-white rounded-lg shadow-sm p-1.5 flex flex-col h-full w-full overflow-hidden ${className}`}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-1 flex-shrink-0">
+        <h2 className="text-[10px] font-semibold text-gray-600">ACTUAL OUTPUT</h2>
+        <div className="flex items-center gap-1">
+          <button onClick={fetchData} className="text-[10px] text-gray-500 hover:text-gray-700" title="Refresh">🔄</button>
+          <button className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-700 border border-gray-300 rounded hover:bg-gray-50">
+            Shift {shiftNumber} <ChevronDown size={10} />
           </button>
         </div>
       </div>
 
-      <div className="mb-2 sm:mb-4">
-        <div className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">{totalOutput.toLocaleString('id-ID')}</div>
-        <div className="text-[10px] sm:text-xs text-gray-500 mb-2 sm:mb-3">Total Actual Output</div>
-        <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm flex-wrap">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full" style={{ backgroundColor: '#5B7FFF' }}></div>
-            <span className="font-semibold" style={{ color: '#5B7FFF' }}>GOOD: {totalGood}</span>
+      {/* Stats */}
+      <div className="mb-1 flex-shrink-0">
+        <div className="text-lg font-bold text-gray-900">{totalOutput.toLocaleString('id-ID')}</div>
+        <div className="text-[8px] text-gray-500">Total Actual Output</div>
+        <div className="flex items-center gap-2 text-[9px] mt-0.5">
+          <div className="flex items-center gap-0.5">
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#5B7FFF' }}></div>
+            <span style={{ color: '#5B7FFF' }}>GOOD: {totalGood}</span>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full" style={{ backgroundColor: '#FF6B9D' }}></div>
-            <span className="font-semibold" style={{ color: '#FF6B9D' }}>Reject/NG: {totalReject}</span>
+          <div className="flex items-center gap-0.5">
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#FF6B9D' }}></div>
+            <span style={{ color: '#FF6B9D' }}>Reject/NG: {totalReject}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-[200px]">
+      {/* Chart */}
+      <div className="flex-1 min-h-0">
         <Bar data={chartData} options={options} />
       </div>
 
       {data.length === 0 && !loading && (
-        <div className="text-center text-gray-400 text-sm mt-4">
-          No data available for the selected filters
-        </div>
+        <div className="text-center text-gray-400 text-[8px] mt-1">No data available</div>
       )}
     </div>
   );
 }
+

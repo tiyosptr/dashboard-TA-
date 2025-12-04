@@ -149,24 +149,23 @@ export default function OEEChart({ width = '100%', height = '100%', className = 
 
   if (loading) {
     return (
-      <div className={`bg-white rounded-lg shadow-sm p-3 sm:p-4 h-full flex flex-col items-center justify-center ${className}`}>
-        <div className="text-gray-500 text-sm">Loading OEE...</div>
+      <div className={`bg-white rounded-lg shadow-sm p-1.5 h-full flex flex-col items-center justify-center overflow-hidden ${className}`}>
+        <div className="text-gray-500 text-[9px]">Loading...</div>
       </div>
     );
   }
 
   return (
     <div
-      className={`bg-white rounded-lg shadow-sm p-3 sm:p-4 h-full flex flex-col ${className}`}
+      className={`bg-white rounded-lg shadow-sm p-1.5 h-full flex flex-col overflow-hidden ${className}`}
       style={{ width, height }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-2 sm:mb-3">
-        <h2 className="text-xs sm:text-sm font-semibold text-gray-600 tracking-wide">OEE</h2>
+      <div className="flex items-center justify-between mb-0.5 flex-shrink-0">
+        <h2 className="text-[9px] font-semibold text-gray-600">OEE</h2>
         <span
-          className={`text-[10px] sm:text-xs font-semibold px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-full ${oeeValue >= 85 ? 'bg-green-100 text-green-700' :
-            oeeValue >= 60 ? 'bg-yellow-100 text-yellow-700' :
-              'bg-red-100 text-red-700'
+          className={`text-[7px] font-semibold px-1 py-0.5 rounded-full ${oeeValue >= 85 ? 'bg-green-100 text-green-700' :
+            oeeValue >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'
             }`}
         >
           {getOEEStatus(oeeValue)}
@@ -174,37 +173,34 @@ export default function OEEChart({ width = '100%', height = '100%', className = 
       </div>
 
       {/* OEE Value */}
-      <div className={`text-2xl sm:text-3xl font-bold mb-0.5 sm:mb-1 ${getOEEColor(oeeValue)}`}>{oeeValue.toFixed(2)}%</div>
-      <div className="text-[10px] sm:text-xs text-gray-500 mb-2 sm:mb-4">Overall Equipment Effectiveness</div>
+      <div className="flex-shrink-0">
+        <div className={`text-base font-bold ${getOEEColor(oeeValue)}`}>{oeeValue.toFixed(2)}%</div>
+        <div className="text-[7px] text-gray-500">Overall Equipment Effectiveness</div>
+      </div>
 
       {/* Chart */}
-      <div className="flex items-center justify-center mb-2 sm:mb-4 flex-1 relative min-h-[120px]">
+      <div className="flex-1 flex items-center justify-center relative min-h-0 my-0.5">
         <Doughnut data={data} options={options} plugins={[percentagePlugin]} />
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="text-center">
-            <div className={`text-xl sm:text-2xl font-bold ${getOEEColor(oeeValue)}`}>{oeeValue.toFixed(1)}%</div>
-            <div className="text-[10px] sm:text-xs text-gray-500">OEE</div>
+            <div className={`text-xs font-bold ${getOEEColor(oeeValue)}`}>{oeeValue.toFixed(1)}%</div>
           </div>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="space-y-1 sm:space-y-2">
+      {/* Legend - compact */}
+      <div className="flex-shrink-0">
         {oeeData.map(item => (
-          <div key={item.label} className="flex items-center justify-between text-xs sm:text-sm">
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-              <span className="text-gray-700">{item.label}</span>
+          <div key={item.label} className="flex items-center justify-between text-[8px]">
+            <div className="flex items-center gap-0.5">
+              <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color }}></div>
+              <span className="text-gray-600">{item.label}</span>
             </div>
             <span className="font-semibold text-gray-800">{item.value.toFixed(1)}%</span>
           </div>
         ))}
       </div>
-
-      {/* Formula */}
-      <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
-        <p className="text-[10px] sm:text-xs text-gray-500">OEE = Availability × Performance × Quality</p>
-      </div>
     </div>
   );
 }
+

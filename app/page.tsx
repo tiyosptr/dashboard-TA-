@@ -8,9 +8,9 @@ import { DowntimeAlert as DowntimeAlertType } from '@/types';
 
 // Skeleton component for loading states
 const ChartSkeleton = ({ className = '' }: { className?: string }) => (
-  <div className={`bg-white rounded-lg shadow-sm p-3 sm:p-4 animate-pulse ${className}`}>
-    <div className="h-4 bg-gray-200 rounded w-1/3 mb-4"></div>
-    <div className="h-32 bg-gray-100 rounded"></div>
+  <div className={`bg-white rounded-lg shadow-sm p-2 animate-pulse ${className}`}>
+    <div className="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
+    <div className="h-16 bg-gray-100 rounded"></div>
   </div>
 );
 
@@ -60,7 +60,7 @@ const DowntimeAlert = dynamic(() => import('@/components/downtime-alert'), {
 });
 
 export default function Home() {
-  const [showTrendAnalysis, setShowTrendAnalysis] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [downtimeAlerts, setDowntimeAlerts] = useState<DowntimeAlertType[]>([]);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
@@ -70,10 +70,10 @@ export default function Home() {
     setMounted(true);
   }, []);
 
-  // Auto-rotate between Dashboard and TrendAnalysis every 10 seconds
+  // Auto-rotate between Dashboard and Analysis every 10 seconds
   useEffect(() => {
     const interval = setInterval(() => {
-      setShowTrendAnalysis(prev => !prev);
+      setShowAnalysis(prev => !prev);
     }, 10000); // 10 seconds
 
     return () => clearInterval(interval);
@@ -166,69 +166,54 @@ export default function Home() {
 
   // Dashboard Content - useMemo must be before conditional return
   const DashboardContent = useMemo(() => (
-    <main className="flex-1 p-2 sm:p-3 lg:p-4 overflow-auto">
-      <div className="min-h-full flex flex-col gap-2 sm:gap-3 lg:gap-4">
+    <main className="flex-1 p-1 overflow-hidden" style={{ height: 'calc(100vh - 40px)' }}>
+      <div className="h-full flex flex-col gap-1">
 
-        {/* 📊 ROW 1: Actual Output - Full Width */}
-        <div className="w-full" style={{ minHeight: 'clamp(180px, 25vh, 280px)' }}>
-          <ActualOutput className="h-full" />
+        {/* TOP ROW: Actual Output FULL WIDTH - Height: 38% */}
+        <div className="w-full" style={{ height: '38%' }}>
+          <ActualOutput className="h-full w-full" />
         </div>
 
-        {/* 📈 ROW 2: Main Dashboard Grid - 4 Column Layout */}
-        {/* 
-          Layout sesuai wireframe:
-          - Kolom 1: OEE (atas) + Cycle Time (bawah)
-          - Kolom 2: Throughput Rate (atas) + Status Machine (bawah)
-          - Kolom 3: Defect by Process (span 2 rows)
-          - Kolom 4: History (span 2 rows)
-        */}
-        <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4" style={{ minHeight: 'clamp(400px, 60vh, 800px)' }}>
-
-          {/* Left Side: 2x2 Grid for small cards */}
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 lg:gap-4">
-
-            {/* OEE - Top Left */}
-            <div style={{ minHeight: 'clamp(150px, 28vh, 350px)' }}>
-              <OEEChart className="h-full w-full" />
-            </div>
-
-            {/* Throughput Rate - Top Right */}
-            <div style={{ minHeight: 'clamp(150px, 28vh, 350px)' }}>
-              <ThroughputChart className="h-full w-full" />
-            </div>
-
-            {/* Cycle Time - Bottom Left */}
-            <div style={{ minHeight: 'clamp(150px, 28vh, 350px)' }}>
-              <CycleTime className="h-full w-full" />
-            </div>
-
-            {/* Status Machine - Bottom Right */}
-            <div style={{ minHeight: 'clamp(150px, 28vh, 350px)' }}>
-              <StatusMachine className="h-full w-full" />
-            </div>
+        {/* MIDDLE ROW: OEE + Throughput + Cycle Time + Status Machine - Height: 31% */}
+        <div className="flex gap-1" style={{ height: '31%' }}>
+          <div className="w-[25%]">
+            <OEEChart className="h-full w-full" />
           </div>
-
-          {/* Defect by Process - Tall Card */}
-          <div style={{ minHeight: 'clamp(300px, 58vh, 700px)' }}>
-            <DefectRejectChart className="h-full w-full" />
+          <div className="w-[25%]">
+            <ThroughputChart className="h-full w-full" />
           </div>
-
-          {/* History - Tall Card */}
-          <div style={{ minHeight: 'clamp(300px, 58vh, 700px)' }}>
-            <HistoryChart className="h-full w-full" />
+          <div className="w-[25%]">
+            <CycleTime className="h-full w-full" />
           </div>
+          <div className="w-[25%]">
+            <StatusMachine className="h-full w-full" />
+          </div>
+        </div>
 
+        {/* BOTTOM ROW: Defect FULL WIDTH - Height: 28% (LEBIH BESAR) */}
+        <div className="w-full" style={{ height: '28%' }}>
+          <DefectRejectChart className="h-full w-full" />
         </div>
 
       </div>
     </main>
   ), []);
 
-  // Trend Analysis Content - useMemo must be before conditional return
-  const TrendAnalysisContent = useMemo(() => (
-    <main className="flex-1 p-2 sm:p-3 lg:p-4 overflow-auto">
-      <div className="min-h-full">
-        <TrendAnalysis className="h-full w-full" />
+  // Analysis Content - Trend Analysis + History
+  const AnalysisContent = useMemo(() => (
+    <main className="flex-1 p-1 overflow-hidden" style={{ height: 'calc(100vh - 40px)' }}>
+      <div className="h-full flex flex-col gap-1">
+
+        {/* Trend Analysis - 60% height */}
+        <div className="w-full" style={{ height: '60%' }}>
+          <TrendAnalysis className="h-full w-full" />
+        </div>
+
+        {/* History Chart - 38% height */}
+        <div className="w-full" style={{ height: '38%' }}>
+          <HistoryChart className="h-full w-full" />
+        </div>
+
       </div>
     </main>
   ), []);
@@ -242,7 +227,7 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 flex flex-col">
+    <div className="h-screen w-full bg-gray-50 flex flex-col overflow-hidden">
       <Header onManagementClick={handleManagementSystem} />
 
       <DowntimeAlert
@@ -251,16 +236,16 @@ export default function Home() {
         onAcknowledge={acknowledgeDowntimeAlert}
       />
 
-      {/* Container for Dashboard/Trend Analysis with smooth transition */}
+      {/* Container for Dashboard/Analysis with smooth transition */}
       <div className="flex-1 min-h-0 relative flex flex-col">
         {/* ✨ Dashboard Content */}
-        <div className={`flex-1 flex flex-col transition-opacity duration-500 ${showTrendAnalysis ? 'hidden' : 'flex'}`}>
-          {!showTrendAnalysis && DashboardContent}
+        <div className={`flex-1 flex flex-col transition-opacity duration-500 ${showAnalysis ? 'hidden' : 'flex'}`}>
+          {!showAnalysis && DashboardContent}
         </div>
 
-        {/* ✨ Trend Analysis Content */}
-        <div className={`flex-1 flex flex-col transition-opacity duration-500 ${showTrendAnalysis ? 'flex' : 'hidden'}`}>
-          {showTrendAnalysis && TrendAnalysisContent}
+        {/* ✨ Analysis Content (Trend Analysis + History) */}
+        <div className={`flex-1 flex flex-col transition-opacity duration-500 ${showAnalysis ? 'flex' : 'hidden'}`}>
+          {showAnalysis && AnalysisContent}
         </div>
       </div>
 

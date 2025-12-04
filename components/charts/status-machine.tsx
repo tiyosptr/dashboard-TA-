@@ -101,41 +101,30 @@ export default function StatusMachine({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
-        Loading machine status...
+      <div className={`bg-white rounded-lg shadow-sm p-1.5 text-center h-full flex items-center justify-center overflow-hidden ${className}`}>
+        <span className="text-[9px] text-gray-500">Loading...</span>
       </div>
     );
   }
 
   return (
-    <div className={`bg-white rounded-xl shadow-sm p-3 sm:p-4 h-full flex flex-col ${className}`}>
-      <h2 className="text-sm sm:text-base font-semibold text-gray-800 mb-2 sm:mb-3 text-center">
-        Status Machine
+    <div className={`bg-white rounded-lg shadow-sm p-1.5 h-full flex flex-col overflow-hidden ${className}`}>
+      <h2 className="text-[9px] font-semibold text-gray-800 mb-0.5 text-center flex-shrink-0">
+        STATUS MACHINE
       </h2>
 
       <div
-        className="grid w-full gap-2 sm:gap-3"
-        style={{
-          gridTemplateColumns: `repeat(auto-fit, minmax(100px, 1fr))`,
-        }}
+        className="flex-1 grid gap-1 overflow-auto"
+        style={{ gridTemplateColumns: `repeat(auto-fit, minmax(50px, 1fr))` }}
       >
         {machines.map((machine) => (
           <div
             key={machine.id}
-            className="border border-gray-200 rounded-lg sm:rounded-xl p-2 sm:p-3 flex flex-col justify-between items-center text-center hover:shadow-md transition-all duration-200 bg-gray-50"
+            className="border border-gray-200 rounded p-1 flex flex-col items-center text-center bg-gray-50"
           >
-            <div className="text-center mb-1.5 sm:mb-2 w-full">
-              <div className="text-[10px] sm:text-xs text-gray-500 mb-0.5 sm:mb-1">Machine</div>
-              <div className="font-semibold text-gray-800 text-xs sm:text-sm break-words line-clamp-2">
-                {machine.label}
-              </div>
-              <div className="text-[9px] sm:text-[10px] text-gray-500 truncate w-full">{machine.name_line}</div>
-            </div>
-
+            <div className="text-[7px] text-gray-600 truncate w-full">{machine.label}</div>
             <div
-              className={`${getStatusColor(
-                machine.status
-              )} text-white text-[10px] sm:text-xs font-medium py-0.5 sm:py-1 px-1.5 sm:px-2 rounded-md w-full text-center truncate`}
+              className={`${getStatusColor(machine.status)} text-white text-[7px] font-medium py-0.5 px-1 rounded w-full text-center truncate mt-0.5`}
             >
               {getStatusText(machine.status)}
             </div>
@@ -145,3 +134,4 @@ export default function StatusMachine({
     </div>
   );
 }
+
