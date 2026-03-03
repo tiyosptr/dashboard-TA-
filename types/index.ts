@@ -173,6 +173,8 @@ export interface Notification {
   start_at: string;
   done_at?: string;
   work_order_id?: string;
+  process_id?: string;
+  name_line?: string;
 }
 
 export interface DowntimeAlert {

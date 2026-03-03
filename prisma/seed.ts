@@ -13,9 +13,8 @@ async function main() {
         create: {
             id: '00000000-0000-0000-0000-000000000001',
             name: 'Line 1',
-            status: 'running',
+            status: 'active',
             totalRunningHours: 1000,
-            nameProcess: 'Assembly',
         },
     })
 
@@ -27,7 +26,6 @@ async function main() {
             name: 'Line 2',
             status: 'maintenance',
             totalRunningHours: 800,
-            nameProcess: 'Testing',
         },
     })
 
@@ -41,9 +39,7 @@ async function main() {
         create: {
             id: '00000000-0000-0000-0000-000000000101',
             nameMachine: 'Machine A1',
-            nameLine: 'Line 1',
-            status: 'running',
-            lineId: line1.id,
+            status: 'active',
             nextMaintenance: new Date('2025-12-15'),
             lastMaintenance: new Date('2025-11-15'),
             totalRunningHours: '500',
@@ -56,9 +52,7 @@ async function main() {
         create: {
             id: '00000000-0000-0000-0000-000000000102',
             nameMachine: 'Machine A2',
-            nameLine: 'Line 1',
-            status: 'idle',
-            lineId: line1.id,
+            status: 'inactive',
             nextMaintenance: new Date('2025-12-20'),
             lastMaintenance: new Date('2025-11-20'),
             totalRunningHours: '450',

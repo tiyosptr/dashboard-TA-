@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import prisma from '@/lib/prisma'
+import { supabaseAdmin } from '@/lib/supabase/supabase-admin'
 
 // GET all machines with optional filters
 export async function GET(request: NextRequest) {
@@ -8,22 +8,71 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status')
     const lineId = searchParams.get('lineId')
 
-    const where: any = {}
-    if (status) where.status = status
-    if (lineId) where.lineId = lineId
+    if (lineId) {
+      // When lineId is provided, get machines through relationship chain
+      const { data: lineProcesses, error } = await supabaseAdmin
+        .from('line_process')
+        .select(`
+          process_order,
+          process:process_id (
+            id,
+            name,
+            index,
+            machine_id,
+            machine:machine_id (
+              id,
+              name_machine,
+              status,
+              next_maintenance,
+              last_maintenance,
+              total_running_hours
+            )
+          )
+        `)
+        .eq('line_id', lineId)
+        .order('process_order', { ascending: true })
 
-    const machines = await prisma.machine.findMany({
-      where,
-      include: {
-        notifications: true,
-        workOrders: true,
-      },
-      orderBy: { nameMachine: 'asc' },
-    })
+      if (error) {
+        console.error('Error fetching machines by line:', error)
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to fetch machines'
+        }, { status: 500 })
+      }
+
+      const machines = (lineProcesses || [])
+        .map((lp: any) => lp.process?.machine)
+        .filter(Boolean)
+
+      return NextResponse.json({
+        success: true,
+        data: machines
+      })
+    }
+
+    // Default: get all machines
+    let query = supabaseAdmin
+      .from('machine')
+      .select('*')
+      .order('name_machine', { ascending: true })
+
+    if (status) {
+      query = query.eq('status', status)
+    }
+
+    const { data: machines, error } = await query
+
+    if (error) {
+      console.error('Error fetching machines:', error)
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to fetch machines'
+      }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
-      data: machines
+      data: machines || []
     })
   } catch (error) {
     console.error('Error fetching machines:', error)
@@ -39,9 +88,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    const machine = await prisma.machine.create({
-      data: body,
-    })
+    const { data: machine, error } = await supabaseAdmin
+      .from('machine')
+      .insert(body)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error creating machine:', error)
+      return NextResponse.json({ error: 'Failed to create machine' }, { status: 500 })
+    }
 
     return NextResponse.json(machine, { status: 201 })
   } catch (error) {
@@ -60,10 +116,17 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 })
     }
 
-    const machine = await prisma.machine.update({
-      where: { id },
-      data,
-    })
+    const { data: machine, error } = await supabaseAdmin
+      .from('machine')
+      .update(data)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error updating machine:', error)
+      return NextResponse.json({ error: 'Failed to update machine' }, { status: 500 })
+    }
 
     return NextResponse.json(machine)
   } catch (error) {
@@ -82,9 +145,15 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 })
     }
 
-    await prisma.machine.delete({
-      where: { id },
-    })
+    const { error } = await supabaseAdmin
+      .from('machine')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('Error deleting machine:', error)
+      return NextResponse.json({ error: 'Failed to delete machine' }, { status: 500 })
+    }
 
     return NextResponse.json({ message: 'Machine deleted successfully' })
   } catch (error) {

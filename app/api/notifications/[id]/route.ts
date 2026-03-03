@@ -1,6 +1,6 @@
 //app/api/notifications/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase/supabase';
+import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 
 // PATCH - Update notification (mark as read, acknowledge)
 export async function PATCH(
@@ -23,7 +23,7 @@ export async function PATCH(
       updateData.acknowladged_at = new Date().toISOString();
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('notification')
       .update(updateData)
       .eq('id', notificationId)

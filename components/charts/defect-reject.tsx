@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { TrendingDown, TrendingUp } from 'lucide-react';
+import { memo, useEffect, useRef, useState } from 'react';
+import { TrendingDown, TrendingUp, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface DefectRejectBarChartProps {
     width?: string | number;
@@ -13,9 +13,10 @@ interface DefectProcess {
     defectCount: number;
     percentage: number;
     color: string;
+    gradient: string;
 }
 
-export default function DefectRejectBarChart({
+function DefectRejectBarChart({
     className = '',
 }: DefectRejectBarChartProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -32,17 +33,16 @@ export default function DefectRejectBarChart({
     };
 
     const defectByProcess: DefectProcess[] = [
-        { process: 'Extrusion', defectCount: 420, percentage: 33.7, color: '#EF4444' },
-        { process: 'Molding', defectCount: 315, percentage: 25.3, color: '#F59E0B' },
-        { process: 'Assembly', defectCount: 245, percentage: 19.6, color: '#3B82F6' },
-        { process: 'Coating', defectCount: 178, percentage: 14.3, color: '#8B5CF6' },
-        { process: 'Packaging', defectCount: 89, percentage: 7.1, color: '#6B7280' },
-        { process: 'Testing', defectCount: 67, percentage: 5.4, color: '#10B981' },
-        { process: 'Inspection', defectCount: 33, percentage: 2.6, color: '#F97316' },
-        { process: 'Quality Control', defectCount: 25, percentage: 2.0, color: '#EC4899' },
+        { process: 'Extrusion', defectCount: 420, percentage: 33.7, color: '#ef4444', gradient: 'from-red-500 to-red-400' },
+        { process: 'Molding', defectCount: 315, percentage: 25.3, color: '#f59e0b', gradient: 'from-amber-500 to-amber-400' },
+        { process: 'Assembly', defectCount: 245, percentage: 19.6, color: '#6366f1', gradient: 'from-indigo-500 to-indigo-400' },
+        { process: 'Coating', defectCount: 178, percentage: 14.3, color: '#8b5cf6', gradient: 'from-violet-500 to-violet-400' },
+        { process: 'Packaging', defectCount: 89, percentage: 7.1, color: '#64748b', gradient: 'from-slate-500 to-slate-400' },
+        { process: 'Testing', defectCount: 67, percentage: 5.4, color: '#10b981', gradient: 'from-emerald-500 to-emerald-400' },
+        { process: 'Inspection', defectCount: 33, percentage: 2.6, color: '#f97316', gradient: 'from-orange-500 to-orange-400' },
+        { process: 'QC', defectCount: 25, percentage: 2.0, color: '#ec4899', gradient: 'from-pink-500 to-pink-400' },
     ];
 
-    // Auto-scroll functionality
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
@@ -56,9 +56,7 @@ export default function DefectRejectBarChart({
         setIsScrollReady(true);
 
         return () => {
-            if (animationRef.current) {
-                cancelAnimationFrame(animationRef.current);
-            }
+            if (animationRef.current) cancelAnimationFrame(animationRef.current);
         };
     }, []);
 
@@ -71,15 +69,11 @@ export default function DefectRejectBarChart({
         const scrollableHeight = el.scrollHeight / 2;
         if (scrollableHeight <= 10) return;
 
-        const speed = 0.5;
+        const speed = 0.4;
 
         const animate = () => {
             scrollPositionRef.current += speed;
-
-            if (scrollPositionRef.current >= scrollableHeight) {
-                scrollPositionRef.current = 0;
-            }
-
+            if (scrollPositionRef.current >= scrollableHeight) scrollPositionRef.current = 0;
             el.scrollTop = scrollPositionRef.current;
             animationRef.current = requestAnimationFrame(animate);
         };
@@ -87,79 +81,78 @@ export default function DefectRejectBarChart({
         animationRef.current = requestAnimationFrame(animate);
 
         return () => {
-            if (animationRef.current) {
-                cancelAnimationFrame(animationRef.current);
-            }
+            if (animationRef.current) cancelAnimationFrame(animationRef.current);
         };
     }, [isScrollReady]);
 
     return (
-        <div className={`bg-white rounded-xl shadow-sm p-3 flex flex-col h-full w-full overflow-hidden ${className}`}>
+        <div className={`chart-card p-3 flex flex-col h-full w-full overflow-hidden ${className}`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                <h3 className="font-bold text-gray-900 text-base">Defect by Process</h3>
-                <div
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-semibold ${stats.trend < 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}
-                >
-                    {stats.trend < 0 ? <TrendingDown size={14} /> : <TrendingUp size={14} />}
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center shadow-sm">
+                        <ShieldAlert size={13} className="text-white" />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-slate-800 text-xs tracking-wide">DEFECT BY PROCESS</h3>
+                        <p className="text-[8px] text-slate-400 -mt-0.5">Auto-scrolling view</p>
+                    </div>
+                </div>
+                <div className={`stat-badge ${stats.trend < 0 ? 'stat-badge-success' : 'stat-badge-danger'}`}>
+                    {stats.trend < 0 ? <TrendingDown size={10} /> : <TrendingUp size={10} />}
                     {Math.abs(stats.trend)}%
                 </div>
             </div>
 
             {/* Stats Row */}
-            <div className="flex gap-3 mb-3 flex-shrink-0">
-                <div className="bg-blue-50 rounded-xl px-4 py-2 flex-1 text-center border border-blue-100">
-                    <div className="text-xs text-gray-500 font-medium">Produced</div>
-                    <div className="text-lg font-bold text-blue-700">{(stats.totalProduced / 1000).toFixed(1)}K</div>
+            <div className="flex gap-2 mb-2 flex-shrink-0">
+                <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-lg px-3 py-1.5 flex-1 text-center border border-indigo-100">
+                    <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Produced</div>
+                    <div className="text-sm font-black text-indigo-700">{(stats.totalProduced / 1000).toFixed(1)}K</div>
                 </div>
-                <div className="bg-red-50 rounded-xl px-4 py-2 flex-1 text-center border border-red-100">
-                    <div className="text-xs text-gray-500 font-medium">Defect</div>
-                    <div className="text-lg font-bold text-red-700">{stats.totalDefect}</div>
+                <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 rounded-lg px-3 py-1.5 flex-1 text-center border border-rose-100">
+                    <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Defect</div>
+                    <div className="text-sm font-black text-rose-700">{stats.totalDefect.toLocaleString()}</div>
                 </div>
-                <div className="bg-orange-50 rounded-xl px-4 py-2 flex-1 text-center border border-orange-100">
-                    <div className="text-xs text-gray-500 font-medium">Rate</div>
-                    <div className="text-lg font-bold text-orange-700">{stats.defectRate}%</div>
+                <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 rounded-lg px-3 py-1.5 flex-1 text-center border border-amber-100">
+                    <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Rate</div>
+                    <div className="text-sm font-black text-amber-700">{stats.defectRate}%</div>
                 </div>
             </div>
 
-            {/* Auto-Scrolling Progress Bars List */}
+            {/* Auto-Scrolling Progress Bars */}
             <div
                 ref={scrollRef}
-                className="flex-1 overflow-hidden"
+                className="flex-1 overflow-hidden no-scrollbar"
                 style={{ minHeight: 0 }}
             >
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                     {defectByProcess.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-3">
+                        <div key={idx} className="flex items-center gap-2 group">
+                            {/* Rank */}
+                            <span className="text-[9px] font-black text-slate-400 w-3 text-right">#{idx + 1}</span>
+
                             {/* Process Name */}
-                            <span className="text-sm text-gray-700 w-24 truncate font-semibold">{item.process}</span>
+                            <span className="text-[11px] text-slate-700 w-16 truncate font-semibold">{item.process}</span>
 
                             {/* Progress Bar */}
-                            <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full rounded-full transition-all duration-500 flex items-center justify-end pr-2"
-                                    style={{
-                                        width: `${item.percentage}%`,
-                                        backgroundColor: item.color
-                                    }}
+                                    className={`h-full rounded-full bg-gradient-to-r ${item.gradient} flex items-center justify-end pr-2 transition-all duration-700`}
+                                    style={{ width: `${Math.max(item.percentage, 10)}%` }}
                                 >
-                                    <span className="text-xs text-white font-bold drop-shadow">{item.defectCount}</span>
+                                    <span className="text-[9px] text-white font-bold drop-shadow-sm">{item.defectCount}</span>
                                 </div>
                             </div>
 
                             {/* Percentage */}
-                            <span className="text-sm font-bold text-gray-900 w-14 text-right">{item.percentage}%</span>
+                            <span className="text-[10px] font-black text-slate-700 w-10 text-right">{item.percentage}%</span>
                         </div>
                     ))}
                 </div>
             </div>
-
-            <style jsx>{`
-                div::-webkit-scrollbar {
-                    display: none;
-                }
-            `}</style>
         </div>
     );
 }
+
+export default memo(DefectRejectBarChart);

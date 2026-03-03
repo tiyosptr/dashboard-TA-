@@ -1,21 +1,188 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  Bell, 
-  AlertTriangle, 
-  Info, 
-  CheckCircle, 
-  X, 
-  Check, 
+import {
+  Bell,
+  AlertTriangle,
+  Info,
+  CheckCircle,
+  X,
+  Check,
   ArrowLeft,
   Loader2,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  MapPin,
+  User,
+  Search
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/supabase';
-import { Notification } from '@/types';
+import { Notification, Technician } from '@/types';
+
+interface TechnicianModalProps {
+  isOpen: boolean;
+  technicians: Technician[];
+  isLoadingTechnicians: boolean;
+  isGenerating: boolean;
+  onSelect: (technicianName: string) => void;
+  onClose: () => void;
+  notificationMachineName: string;
+  notificationLineName?: string;
+}
+
+function TechnicianModal({
+  isOpen,
+  technicians,
+  isLoadingTechnicians,
+  isGenerating,
+  onSelect,
+  onClose,
+  notificationMachineName,
+  notificationLineName,
+}: TechnicianModalProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTechnician, setSelectedTechnician] = useState<string | null>(null);
+
+  if (!isOpen) return null;
+
+  const filteredTechnicians = technicians.filter((t) =>
+    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.specialization?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-white">Select Technician</h3>
+              <p className="text-green-100 text-xs mt-0.5">
+                Assign work order for <span className="font-semibold">{notificationMachineName}</span>
+                {notificationLineName && (
+                  <span> • {notificationLineName}</span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              disabled={isGenerating}
+              className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-50"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="px-6 pt-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+            <input
+              type="text"
+              placeholder="Search technician..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Technician List */}
+        <div className="px-6 py-3 max-h-72 overflow-y-auto">
+          {isLoadingTechnicians ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 size={32} className="animate-spin text-green-600" />
+              <span className="ml-3 text-gray-600">Loading technicians...</span>
+            </div>
+          ) : filteredTechnicians.length === 0 ? (
+            <div className="text-center py-8">
+              <User className="mx-auto text-gray-300 mb-2" size={40} />
+              <p className="text-gray-500 text-sm">No technicians found</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredTechnicians.map((tech) => (
+                <button
+                  key={tech.id}
+                  onClick={() => setSelectedTechnician(tech.name)}
+                  disabled={isGenerating}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${selectedTechnician === tech.name
+                    ? 'border-green-500 bg-green-50 shadow-md'
+                    : 'border-gray-100 hover:border-green-300 hover:bg-green-50/50'
+                    } disabled:opacity-50`}
+                >
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${selectedTechnician === tech.name
+                      ? 'bg-gradient-to-br from-green-500 to-emerald-600'
+                      : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                      }`}
+                  >
+                    {tech.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 text-sm">{tech.name}</div>
+                    <div className="text-xs text-gray-500">
+                      {tech.specialization || 'General Technician'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${tech.is_active
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-gray-100 text-gray-500'
+                        }`}
+                    >
+                      {tech.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    {selectedTechnician === tech.name && (
+                      <CheckCircle size={20} className="text-green-600 flex-shrink-0" />
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            disabled={isGenerating}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              if (selectedTechnician) onSelect(selectedTechnician);
+            }}
+            disabled={!selectedTechnician || isGenerating}
+            className="px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Generate Work Order
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function NotificationsPage() {
   const router = useRouter();
@@ -24,6 +191,15 @@ export default function NotificationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedWorkOrderId, setSelectedWorkOrderId] = useState<string | null>(null);
+
+  // Technician modal state
+  const [showTechnicianModal, setShowTechnicianModal] = useState(false);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
+  const [selectedNotificationMachineName, setSelectedNotificationMachineName] = useState('');
+  const [selectedNotificationLineName, setSelectedNotificationLineName] = useState<string | undefined>(undefined);
 
   // Load notifications
   const loadNotifications = async (showLoader = true) => {
@@ -34,13 +210,33 @@ export default function NotificationsPage() {
       const result = await response.json();
 
       if (result.success) {
-        setNotifications(result.data);
+        // Filter out notifications that already have a work order generated
+        const activeNotifications = result.data.filter(
+          (n: Notification) => !n.work_order_id
+        );
+        setNotifications(activeNotifications);
       }
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
+    }
+  };
+
+  // Load technicians
+  const loadTechnicians = async () => {
+    setIsLoadingTechnicians(true);
+    try {
+      const response = await fetch('/api/technician');
+      const result = await response.json();
+      if (result.success) {
+        setTechnicians(result.data);
+      }
+    } catch (error) {
+      console.error('Error loading technicians:', error);
+    } finally {
+      setIsLoadingTechnicians(false);
     }
   };
 
@@ -118,12 +314,30 @@ export default function NotificationsPage() {
     }
   };
 
-  const generateWorkOrder = async (id: string) => {
+  // Open technician modal
+  const openTechnicianModal = (notification: Notification) => {
+    setSelectedNotificationId(notification.id);
+    setSelectedNotificationMachineName(notification.machine_name);
+    setSelectedNotificationLineName(notification.name_line || undefined);
+    setShowTechnicianModal(true);
+    loadTechnicians();
+  };
+
+  // Generate work order with selected technician
+  const handleTechnicianSelect = async (technicianName: string) => {
+    if (!selectedNotificationId) return;
+    setIsGenerating(true);
+
+    const notifId = selectedNotificationId; // Save ID before clearing state
+
     try {
       const response = await fetch('/api/work-orders/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notificationId: id }),
+        body: JSON.stringify({
+          notificationId: notifId,
+          technicianName: technicianName,
+        }),
       });
 
       const result = await response.json();
@@ -132,14 +346,23 @@ export default function NotificationsPage() {
         throw new Error(result.error || 'Failed to generate work order');
       }
 
-      alert(
-        `✅ Work Order Generated!\n\nID: ${result.data.id}\nAssigned to: ${result.data.assigned_to}\n\nYou can view it by clicking "View Work Order" button.`
+      // Remove the notification from the list immediately
+      setNotifications((prev) =>
+        prev.filter((n) => n.id !== notifId)
       );
 
-      loadNotifications(false);
+      // Close modal
+      setShowTechnicianModal(false);
+      setSelectedNotificationId(null);
+
+      alert(
+        `✅ Work Order Generated!\n\nCode: ${result.data.work_order_code}\nAssigned to: ${technicianName}\nLine: ${result.data.name_line || 'N/A'}\n\nThe work order is now available in the Work Orders tab.`
+      );
     } catch (error: any) {
       console.error('Error generating work order:', error);
       alert(`❌ Error: ${error.message}`);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -151,7 +374,7 @@ export default function NotificationsPage() {
   const markAllAsRead = async () => {
     try {
       const unreadNotifications = notifications.filter((n) => !n.read);
-      
+
       await Promise.all(
         unreadNotifications.map((n) =>
           fetch(`/api/notifications/${n.id}`, {
@@ -238,36 +461,29 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="space-y-4">
+      <div className="max-w-7xl mx-auto space-y-4">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-2 transition-colors"
-            >
-              <ArrowLeft size={20} />
-              <span className="font-medium">Back to Dashboard</span>
-            </button>
-            <h2 className="text-3xl font-bold text-gray-900">Notifications</h2>
-            <p className="text-sm text-gray-500">Real-time alerts and system notifications</p>
+            <h2 className="text-xl font-bold text-gray-900">Notifications</h2>
+            <p className="text-xs text-gray-500">Real-time alerts and system notifications</p>
           </div>
-          
-          <div className="flex gap-3">
+
+          <div className="flex gap-2">
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm"
             >
-              <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
               Refresh
             </button>
-            
+
             <button
               onClick={markAllAsRead}
               disabled={unreadCount === 0}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm"
             >
               Mark All as Read
             </button>
@@ -275,37 +491,37 @@ export default function NotificationsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600">Total Notifications</span>
-              <Bell className="text-blue-600" size={20} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white border border-gray-200 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-gray-600">Total Notifications</span>
+              <Bell className="text-blue-600" size={16} />
             </div>
-            <p className="text-3xl font-bold text-gray-900">{notifications.length}</p>
+            <p className="text-2xl font-bold text-gray-900">{notifications.length}</p>
           </div>
 
-          <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-orange-700">Unread</span>
-              <Bell className="text-orange-600" size={20} />
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-orange-700">Unread</span>
+              <Bell className="text-orange-600" size={16} />
             </div>
-            <p className="text-3xl font-bold text-orange-900">{unreadCount}</p>
+            <p className="text-2xl font-bold text-orange-900">{unreadCount}</p>
           </div>
 
-          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-red-700">Critical</span>
-              <AlertTriangle className="text-red-600" size={20} />
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-red-700">Critical</span>
+              <AlertTriangle className="text-red-600" size={16} />
             </div>
-            <p className="text-3xl font-bold text-red-900">{criticalCount}</p>
+            <p className="text-2xl font-bold text-red-900">{criticalCount}</p>
           </div>
 
-          <div className="bg-purple-50 border-2 border-purple-200 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-purple-700">Downtime</span>
-              <AlertTriangle className="text-purple-600" size={20} />
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-purple-700">Downtime</span>
+              <AlertTriangle className="text-purple-600" size={16} />
             </div>
-            <p className="text-3xl font-bold text-purple-900">{downtimeCount}</p>
+            <p className="text-2xl font-bold text-purple-900">{downtimeCount}</p>
           </div>
         </div>
 
@@ -314,31 +530,28 @@ export default function NotificationsPage() {
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === 'all'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'all'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
             >
               All ({notifications.length})
             </button>
             <button
               onClick={() => setFilter('unread')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === 'unread'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'unread'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
             >
               Unread ({unreadCount})
             </button>
             <button
               onClick={() => setFilter('critical')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === 'critical'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${filter === 'critical'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
             >
               Critical ({criticalCount})
             </button>
@@ -357,28 +570,25 @@ export default function NotificationsPage() {
             filteredNotifications.map((notification) => (
               <div
                 key={notification.id}
-                className={`bg-white rounded-xl border-l-4 p-5 shadow-sm transition-all ${
-                  notification.work_order_id 
-                    ? 'border-green-500 ring-2 ring-green-200' 
-                    : getSeverityColor(notification.severity)
-                } ${!notification.read ? 'border-l-4' : 'border-l-4 opacity-75'} ${
-                  notification.type === 'Downtime' && !notification.work_order_id ? 'ring-2 ring-red-500 ring-opacity-50' : ''
-                }`}
+                className={`bg-white rounded-xl border-l-4 p-5 shadow-sm transition-all ${notification.work_order_id
+                  ? 'border-green-500 ring-2 ring-green-200'
+                  : getSeverityColor(notification.severity)
+                  } ${!notification.read ? 'border-l-4' : 'border-l-4 opacity-75'} ${notification.type === 'Downtime' && !notification.work_order_id ? 'ring-2 ring-red-500 ring-opacity-50' : ''
+                  }`}
               >
                 <div className="flex items-start gap-4">
                   {/* Icon */}
                   <div
-                    className={`p-3 rounded-lg ${
-                      notification.work_order_id 
-                        ? 'bg-green-100' 
-                        : notification.type === 'Downtime' || notification.severity.toLowerCase() === 'critical'
+                    className={`p-3 rounded-lg ${notification.work_order_id
+                      ? 'bg-green-100'
+                      : notification.type === 'Downtime' || notification.severity.toLowerCase() === 'critical'
                         ? 'bg-red-100 animate-pulse'
                         : notification.severity.toLowerCase() === 'high'
-                        ? 'bg-orange-100'
-                        : notification.severity.toLowerCase() === 'medium'
-                        ? 'bg-yellow-100'
-                        : 'bg-blue-100'
-                    }`}
+                          ? 'bg-orange-100'
+                          : notification.severity.toLowerCase() === 'medium'
+                            ? 'bg-yellow-100'
+                            : 'bg-blue-100'
+                      }`}
                   >
                     {notification.work_order_id ? (
                       <CheckCircle size={20} className="text-green-600" />
@@ -415,14 +625,23 @@ export default function NotificationsPage() {
                           )}
                         </div>
                         <p className="text-sm text-gray-700 mb-2">{notification.messages}</p>
+
+                        {/* Line Info Badge */}
+                        {notification.name_line && (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-200 rounded-full mb-2">
+                            <MapPin size={14} className="text-indigo-600" />
+                            <span className="text-xs font-semibold text-indigo-700">
+                              {notification.name_line}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap mb-3">
                       <span
-                        className={`font-semibold ${
-                          notification.type === 'Downtime' ? 'text-red-600' : ''
-                        }`}
+                        className={`font-semibold ${notification.type === 'Downtime' ? 'text-red-600' : ''
+                          }`}
                       >
                         {notification.type}
                       </span>
@@ -435,6 +654,15 @@ export default function NotificationsPage() {
                           minute: '2-digit',
                         })}
                       </span>
+                      {notification.name_line && (
+                        <>
+                          <span>•</span>
+                          <span className="text-indigo-600 font-semibold flex items-center gap-1">
+                            <MapPin size={12} />
+                            {notification.name_line}
+                          </span>
+                        </>
+                      )}
                       {notification.acknowledged && (
                         <>
                           <span>•</span>
@@ -459,7 +687,7 @@ export default function NotificationsPage() {
                       {!notification.work_order_id && !notification.acknowledged && (
                         <>
                           <button
-                            onClick={() => generateWorkOrder(notification.id)}
+                            onClick={() => openTechnicianModal(notification)}
                             className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center gap-2"
                           >
                             <Check size={16} />
@@ -474,7 +702,7 @@ export default function NotificationsPage() {
                           </button>
                         </>
                       )}
-                      
+
                       {notification.work_order_id && (
                         <button
                           onClick={() => viewWorkOrder(notification.work_order_id!)}
@@ -512,6 +740,23 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
+
+      {/* Technician Selection Modal */}
+      <TechnicianModal
+        isOpen={showTechnicianModal}
+        technicians={technicians}
+        isLoadingTechnicians={isLoadingTechnicians}
+        isGenerating={isGenerating}
+        onSelect={handleTechnicianSelect}
+        onClose={() => {
+          if (!isGenerating) {
+            setShowTechnicianModal(false);
+            setSelectedNotificationId(null);
+          }
+        }}
+        notificationMachineName={selectedNotificationMachineName}
+        notificationLineName={selectedNotificationLineName}
+      />
     </div>
   );
 }

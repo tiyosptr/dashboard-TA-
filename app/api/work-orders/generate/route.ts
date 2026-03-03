@@ -1,6 +1,7 @@
 //api/work-orders/generate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase/supabase';
+import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
+
 
 // Generate Work Order ID
 function generateWorkOrderId(): string {
@@ -26,10 +27,17 @@ function determinePriority(severity: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { notificationId } = body;
+    const { notificationId, technicianName } = body;
+
+    if (!technicianName) {
+      return NextResponse.json(
+        { success: false, error: 'Technician name is required' },
+        { status: 400 }
+      );
+    }
 
     // Get notification
-    const { data: notification, error: notifError } = await supabase
+    const { data: notification, error: notifError } = await supabaseAdmin
       .from('notification')
       .select('*')
       .eq('id', notificationId)
@@ -37,23 +45,27 @@ export async function POST(request: NextRequest) {
 
     if (notifError) throw notifError;
 
-    // Get available technician
-    const { data: technician, error: techError } = await supabase
-      .from('technician')
-      .select('*')
-      .eq('is_active', 'true')
-      .limit(1)
-      .single();
+    // Resolve line info from process_id via line_process
+    let lineId: string | null = null;
+    let nameLine: string | null = null;
 
-    if (techError || !technician) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'No available technician found',
-        },
-        { status: 400 }
-      );
+    if (notification.process_id) {
+      const { data: lpData } = await supabaseAdmin
+        .from('line_process')
+        .select('line_id, line:line_id(id, name_line)')
+        .eq('process_id', notification.process_id)
+        .limit(1)
+        .single();
+
+      if (lpData) {
+        lineId = lpData.line_id;
+        const line = lpData.line as any;
+        if (line) {
+          nameLine = line.name_line || null;
+        }
+      }
     }
+
     const woCode = generateWorkOrderId();
     // Create work order
     const workOrderData = {
@@ -62,10 +74,10 @@ export async function POST(request: NextRequest) {
       priority: determinePriority(notification.severity),
       machine_id: notification.machine_id,
       machine_name: notification.machine_name,
-      line_id: null,
-      name_line: null,
+      line_id: lineId,
+      name_line: nameLine,
       status: 'Pending',
-      assigned_to: technician.name,
+      assigned_to: technicianName,
       created_at: new Date().toISOString(),
       schedule_date: new Date().toISOString(),
       completed_at: null,
@@ -74,7 +86,7 @@ export async function POST(request: NextRequest) {
       description: notification.messages,
     };
 
-    const { data: workOrder, error: woError } = await supabase
+    const { data: workOrder, error: woError } = await supabaseAdmin
       .from('work_order')
       .insert(workOrderData)
       .select()
@@ -110,28 +122,34 @@ export async function POST(request: NextRequest) {
       },
     ];
 
-    const { error: tasksError } = await supabase.from('task').insert(defaultTasks);
+    const { error: tasksError } = await supabaseAdmin.from('task').insert(defaultTasks);
     if (tasksError) console.error('Error creating tasks:', tasksError);
 
     // Create initial note
-    const { error: noteError } = await supabase.from('note').insert({
+    const { error: noteError } = await supabaseAdmin.from('note').insert({
       work_order_id: workOrder.id,
-      text: `Work order auto-generated from downtime notification. Assigned to ${technician.name}.`,
+      text: `Work order auto-generated from downtime notification. Assigned to ${technicianName}.`,
       author: 'System',
       timestamp: new Date().toISOString(),
     });
     if (noteError) console.error('Error creating note:', noteError);
 
     // Update notification with work_order_id
-    await supabase
+    const { error: notifUpdateError } = await supabaseAdmin
       .from('notification')
-      .update({ 
+      .update({
         work_order_id: workOrder.id,
         acknowladged: 'true',
         acknowladged_by: 'System',
         acknowladged_at: new Date().toISOString(),
       })
       .eq('id', notificationId);
+
+    if (notifUpdateError) {
+      console.error('Error linking work_order_id to notification:', notifUpdateError);
+    } else {
+      console.log(`Notification ${notificationId} linked to work order ${workOrder.id}`);
+    }
 
     return NextResponse.json({
       success: true,

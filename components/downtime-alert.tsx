@@ -3,43 +3,36 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/supabase';
-import { Notification, DowntimeAlert as DowntimeAlertType } from '@/types';
+import { Notification } from '@/types';
 
-interface DowntimeAlertProps {
-  alerts?: DowntimeAlertType[];
-  onDismiss?: (id: number) => void;
-  onAcknowledge?: (id: number) => void;
-}
-
-export default function DowntimeAlert({ alerts: propAlerts, onDismiss, onAcknowledge }: DowntimeAlertProps) {
-  const [internalAlerts, setInternalAlerts] = useState<Notification[]>([]);
-
-  // Load recent unacknowledged alerts
-  const loadAlerts = async () => {
-    try {
-      const response = await fetch('/api/notifications?filter=all');
-      const result = await response.json();
-
-      if (result.success) {
-        // Filter: Only unacknowledged AND no work_order_id (not processed yet)
-        const activeAlerts = result.data
-          .filter((n: Notification) =>
-            !n.acknowledged &&
-            !n.work_order_id &&
-            n.type === 'Downtime'
-          )
-          .slice(0, 3);
-
-        setInternalAlerts(activeAlerts);
-      }
-    } catch (error) {
-      console.error('Error loading alerts:', error);
-    }
-  };
+export default function DowntimeAlert({ selectedLineId }: { selectedLineId?: string | null }) {
+  const [alerts, setAlerts] = useState<Notification[]>([]);
 
   useEffect(() => {
-    // If props are provided, we don't need to fetch internally
-    if (propAlerts) return;
+    const loadAlerts = async () => {
+      try {
+        const url = selectedLineId
+          ? `/api/notifications?filter=all&lineId=${selectedLineId}`
+          : '/api/notifications?filter=all';
+
+        const response = await fetch(url);
+        const result = await response.json();
+
+        if (result.success) {
+          // Filter: Only show downtime notifications that are not yet done (work order not completed)
+          const activeAlerts = result.data
+            .filter((n: Notification) =>
+              (!n.done_at || n.done_at === '' || n.done_at === null) &&
+              n.type === 'Downtime'
+            )
+            .slice(0, 3);
+
+          setAlerts(activeAlerts);
+        }
+      } catch (error) {
+        console.error('Error loading alerts:', error);
+      }
+    };
 
     loadAlerts();
 
@@ -53,54 +46,45 @@ export default function DowntimeAlert({ alerts: propAlerts, onDismiss, onAcknowl
           schema: 'public',
           table: 'notification'
         },
-        (payload) => {
-          console.log('Notification change:', payload);
+        () => {
           loadAlerts();
         }
       )
       .subscribe();
 
-    // Refresh every 5 seconds to ensure accuracy
+    // Refresh every 5 seconds to ensure accuracy in case realtime misses an event
     const interval = setInterval(loadAlerts, 5000);
 
     return () => {
       supabase.removeChannel(channel);
       clearInterval(interval);
     };
-  }, [propAlerts]);
+  }, [selectedLineId]);
 
-  const dismissAlert = (alertId: string) => {
-    setInternalAlerts(internalAlerts.filter((a) => a.id !== alertId));
-  };
+  const handleDismiss = async (alertId: string) => {
+    // Optimistic UI update
+    setAlerts(prev => prev.filter(a => a.id !== alertId));
 
-  const handleDismiss = (alertId: string) => {
-    if (onDismiss) {
-      // Try to parse ID as number if possible, since prop expects number
-      const idAsNumber = parseInt(alertId);
-      if (!isNaN(idAsNumber)) {
-        onDismiss(idAsNumber);
-      }
-    } else {
-      dismissAlert(alertId);
+    try {
+      await fetch('/api/notifications', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: alertId,
+          read: true,
+          acknowledged: true, // Acknowledge it so it doesn't show up again here
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to dismiss alert:', error);
+      // Revert if failed (optional, but let's keep it simple)
+      setAlerts([]); // simplistic way or reload
     }
   };
 
-  // Map prop alerts to Notification type if they exist, otherwise use internal alerts
-  const alertsToDisplay: Notification[] = propAlerts
-    ? propAlerts.map(a => ({
-      id: a.id.toString(),
-      type: 'Downtime',
-      severity: 'Critical',
-      machine_id: a.machineId,
-      machine_name: a.machineName,
-      messages: a.reason || 'Unknown reason',
-      read: false,
-      acknowledged: false,
-      start_at: a.timestamp,
-    } as Notification))
-    : internalAlerts;
-
-  if (alertsToDisplay.length === 0) return null;
+  if (alerts.length === 0) return null;
 
   return (
     <>
@@ -108,7 +92,7 @@ export default function DowntimeAlert({ alerts: propAlerts, onDismiss, onAcknowl
         <div className="absolute inset-0 bg-red-600 animate-pulse-fast opacity-20" />
 
         <div className="relative z-10 w-full max-w-2xl mx-4 pointer-events-auto">
-          {alertsToDisplay.map((alert) => (
+          {alerts.map((alert) => (
             <div key={alert.id} className="relative mb-4 animate-scale-in">
               <div className="absolute inset-0 bg-gradient-to-r from-red-500 via-red-600 to-red-500 rounded-2xl animate-border-glow blur-md" />
               <div className="relative bg-gray-900 border-4 border-red-600 rounded-2xl shadow-2xl overflow-hidden">
@@ -135,11 +119,18 @@ export default function DowntimeAlert({ alerts: propAlerts, onDismiss, onAcknowl
                             <span className="text-sm font-mono">{alert.machine_id}</span>
                             <span className="text-sm">•</span>
                             <span className="text-sm">
-                              {new Date(alert.start_at).toLocaleTimeString('id-ID', {
+                              {new Date(alert.start_at + (alert.start_at?.endsWith('Z') ? '' : 'Z')).toLocaleTimeString('id-ID', {
                                 hour: '2-digit',
                                 minute: '2-digit',
                                 second: '2-digit',
                               })}
+                            </span>
+                            <span className="text-sm">•</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${alert.severity?.toLowerCase() === 'critical' ? 'bg-red-500 text-white' :
+                              alert.severity?.toLowerCase() === 'high' ? 'bg-amber-500 text-white' :
+                                'bg-yellow-500 text-white'
+                              }`}>
+                              {alert.severity || 'HIGH'}
                             </span>
                           </div>
                         </div>
@@ -157,7 +148,10 @@ export default function DowntimeAlert({ alerts: propAlerts, onDismiss, onAcknowl
                         <p className="text-sm text-red-300 mb-1">Machine Name:</p>
                         <p className="text-xl font-bold text-white">{alert.machine_name}</p>
                         {alert.messages && (
-                          <p className="text-sm text-red-400 mt-2">Reason: {alert.messages}</p>
+                          <div className="mt-3 pt-3 border-t border-red-800/50">
+                            <p className="text-sm text-red-300 mb-1">Description/Reason:</p>
+                            <p className="text-base text-red-100">{alert.messages}</p>
+                          </div>
                         )}
                       </div>
 
@@ -170,7 +164,7 @@ export default function DowntimeAlert({ alerts: propAlerts, onDismiss, onAcknowl
                         </div>
                         <div className="flex items-center gap-2 text-red-400">
                           <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
-                          <span className="text-sm font-medium">Maintenance Team Has Been Notified</span>
+                          <span className="text-sm font-medium">Please acknowledge to stop the alarm</span>
                         </div>
                       </div>
                     </div>

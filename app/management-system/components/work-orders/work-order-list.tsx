@@ -183,47 +183,47 @@ export default function WorkOrderList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header with Gradient */}
-      <div className="bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 rounded-2xl p-6 shadow-xl">
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 rounded-xl p-4 shadow-lg">
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold text-white mb-2">Work Orders Management</h2>
-            <p className="text-purple-100">Track and manage all maintenance work orders</p>
+            <h2 className="text-xl font-bold text-white mb-1">Work Orders Management</h2>
+            <p className="text-purple-100 text-sm">Track and manage all maintenance work orders</p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white/20 backdrop-blur-sm border-2 border-white/30 text-white rounded-xl hover:bg-white/30 transition-all disabled:opacity-50 font-medium"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 backdrop-blur-sm border border-white/30 text-white rounded-lg hover:bg-white/30 transition-all disabled:opacity-50 font-medium text-sm"
             >
-              <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
               Refresh
             </button>
 
-            <div className="flex bg-white/20 backdrop-blur-sm rounded-xl border-2 border-white/30 p-1">
+            <div className="flex bg-white/20 backdrop-blur-sm rounded-lg border border-white/30 p-0.5">
               <button
                 onClick={() => setViewMode('list')}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-white text-purple-700 shadow-lg' : 'text-white hover:bg-white/20'
+                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${viewMode === 'list' ? 'bg-white text-purple-700 shadow-md' : 'text-white hover:bg-white/20'
                   }`}
               >
-                <List size={18} />
+                <List size={14} />
               </button>
               <button
                 onClick={() => setViewMode('kanban')}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'kanban' ? 'bg-white text-purple-700 shadow-lg' : 'text-white hover:bg-white/20'
+                className={`px-3 py-1.5 rounded-md text-sm font-bold transition-all ${viewMode === 'kanban' ? 'bg-white text-purple-700 shadow-md' : 'text-white hover:bg-white/20'
                   }`}
               >
-                <LayoutGrid size={18} />
+                <LayoutGrid size={14} />
               </button>
             </div>
 
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white text-purple-700 rounded-xl hover:bg-purple-50 transition-all font-bold shadow-lg hover:shadow-xl hover:scale-105"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-purple-700 rounded-lg hover:bg-purple-50 transition-all font-bold shadow-md text-sm"
             >
-              <Plus size={20} />
+              <Plus size={16} />
               New Work Order
             </button>
           </div>
@@ -231,7 +231,7 @@ export default function WorkOrderList() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: 'Total', count: statusCounts.all, color: 'from-gray-500 to-gray-600', icon: Filter },
           { label: 'Pending', count: statusCounts.Pending, color: 'from-gray-600 to-gray-700', icon: Clock },
@@ -239,34 +239,34 @@ export default function WorkOrderList() {
           { label: 'On-Hold', count: statusCounts['On-Hold'], color: 'from-yellow-500 to-yellow-600', icon: AlertCircle },
           { label: 'Completed', count: statusCounts.Completed, color: 'from-green-500 to-green-600', icon: Clock },
         ].map((stat) => (
-          <div key={stat.label} className={`bg-gradient-to-br ${stat.color} rounded-xl p-5 shadow-lg hover:shadow-xl transition-all cursor-pointer group`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-white/80">{stat.label}</span>
-              <stat.icon className="text-white/60 group-hover:scale-110 transition-transform" size={20} />
+          <div key={stat.label} className={`bg-gradient-to-br ${stat.color} rounded-lg p-3 shadow-md hover:shadow-lg transition-all cursor-pointer group`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold text-white/80">{stat.label}</span>
+              <stat.icon className="text-white/60 group-hover:scale-110 transition-transform" size={16} />
             </div>
-            <p className="text-4xl font-black text-white">{stat.count}</p>
+            <p className="text-2xl font-black text-white">{stat.count}</p>
           </div>
         ))}
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-lg p-5 border-2 border-gray-200">
-        <div className="flex flex-col lg:flex-row gap-4">
+      <div className="bg-white rounded-lg shadow-md p-3 border border-gray-200">
+        <div className="flex flex-col lg:flex-row gap-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
               placeholder="Search by WO code, machine, or description..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
             />
           </div>
 
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-5 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-medium cursor-pointer transition-all"
+            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-medium cursor-pointer transition-all"
           >
             <option value="all">All Status</option>
             <option value="Pending">Pending</option>
@@ -278,7 +278,7 @@ export default function WorkOrderList() {
           <select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="px-5 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-medium cursor-pointer transition-all"
+            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-medium cursor-pointer transition-all"
           >
             <option value="all">All Priority</option>
             <option value="Critical">Critical</option>
@@ -291,30 +291,30 @@ export default function WorkOrderList() {
 
       {/* Content */}
       {viewMode === 'list' ? (
-        <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b-2 border-gray-200">
+              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Work Order
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Machine
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Type
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Priority
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Assigned To
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Scheduled
                   </th>
                 </tr>
@@ -326,27 +326,27 @@ export default function WorkOrderList() {
                     className="hover:bg-purple-50 cursor-pointer transition-all group"
                     onClick={() => setSelectedWorkOrder(wo)}
                   >
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-purple-700 group-hover:text-purple-900 mb-1">{wo.work_order_code}</div>
-                      <div className="text-sm text-gray-600 line-clamp-1">
+                    <td className="px-3 py-2.5">
+                      <div className="font-bold text-purple-700 group-hover:text-purple-900 text-sm">{wo.work_order_code}</div>
+                      <div className="text-xs text-gray-600 line-clamp-1">
                         {wo.description}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-gray-900">{wo.machine_name}</div>
-                      <div className="text-sm text-gray-500">{wo.location || 'N/A'}</div>
+                    <td className="px-3 py-2.5">
+                      <div className="font-semibold text-gray-900 text-sm">{wo.machine_name}</div>
+                      <div className="text-xs text-gray-500">{wo.location || 'N/A'}</div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 ${getTypeColor(wo.type)}`}>
+                    <td className="px-3 py-2.5">
+                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${getTypeColor(wo.type)}`}>
                         {wo.type}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-md ${getPriorityColor(wo.priority)}`}>
+                    <td className="px-3 py-2.5">
+                      <span className={`px-2 py-1 rounded-md text-xs font-bold shadow-sm ${getPriorityColor(wo.priority)}`}>
                         {wo.priority}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-2.5">
                       <select
                         value={wo.status}
                         onChange={(e) => {
@@ -354,7 +354,7 @@ export default function WorkOrderList() {
                           handleStatusChange(wo.id as string, e.target.value as WorkOrderStatus);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500 border-2 ${getStatusColor(wo.status)}`}
+                        className={`px-2 py-1 rounded-md text-xs font-bold cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500 border ${getStatusColor(wo.status)}`}
                       >
                         <option value="Pending">Pending</option>
                         <option value="On-Solving">On Solving</option>
@@ -362,17 +362,17 @@ export default function WorkOrderList() {
                         <option value="Completed">Completed</option>
                       </select>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center text-white font-bold text-xs">
                           {wo.assigned_to?.charAt(0) || 'U'}
                         </div>
-                        <span className="text-sm font-medium text-gray-700">{wo.assigned_to}</span>
+                        <span className="text-xs font-medium text-gray-700">{wo.assigned_to}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 text-sm text-gray-700">
-                        <Clock size={16} className="text-gray-400" />
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-700">
+                        <Clock size={12} className="text-gray-400" />
                         {new Date(wo.schedule_date).toLocaleDateString('id-ID', {
                           day: 'numeric',
                           month: 'short',

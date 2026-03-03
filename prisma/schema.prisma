@@ -53,10 +53,9 @@ model Line {
   name               String?
   status             String?
   totalRunningHours  Decimal? @map("total_running_hours") @db.Decimal
-  processId          String?  @default(dbgenerated("gen_random_uuid()")) @map("process_id") @db.Uuid
-  nameProcess        String?  @map("name_process")
 
-  workOrders WorkOrder[]
+  lineProcesses LineProcess[]
+  workOrders    WorkOrder[]
 
   @@map("line")
 }
@@ -64,15 +63,12 @@ model Line {
 model Machine {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nameMachine        String?   @map("name_machine")
-  nameLine           String?   @map("name_line")
   status             String?
   nextMaintenance    DateTime? @map("next_maintenance") @db.Timestamp(6)
   lastMaintenance    DateTime? @map("last_maintenance") @db.Timestamp(6)
   totalRunningHours  String?   @map("total_running_hours")
-  nameProcess        String?   @map("name_process")
-  processId          String?   @default(dbgenerated("gen_random_uuid()")) @map("process_id") @db.Uuid
-  lineId             String?   @default(dbgenerated("gen_random_uuid()")) @map("line_id") @db.Uuid
 
+  processes     Process[]
   notifications Notification[]
   workOrders    WorkOrder[]
 
@@ -105,6 +101,8 @@ model Notification {
   duration        String?
   startAt         DateTime? @map("start_at") @db.Timestamp(6)
   doneAt          DateTime? @map("done_at") @db.Timestamp(6)
+  processId       String?   @map("process_id") @db.Uuid
+  workOrderId     String?   @map("work_order_id") @db.Uuid
 
   machine Machine? @relation(fields: [machineId], references: [id])
 
@@ -112,13 +110,29 @@ model Notification {
 }
 
 model Process {
-  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name     String?
-  lineId   String?  @default(dbgenerated("gen_random_uuid()")) @map("line_id") @db.Uuid
-  nameLine String?  @map("name_line")
-  index    Decimal? @db.Decimal
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String?
+  index     Decimal? @db.Decimal
+  machineId String?  @map("machine_id") @db.Uuid
+
+  machine       Machine?      @relation(fields: [machineId], references: [id])
+  lineProcesses LineProcess[]
 
   @@map("process")
+}
+
+model LineProcess {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lineId       String    @map("line_id") @db.Uuid
+  processId    String    @map("process_id") @db.Uuid
+  processOrder Int?      @map("process_order")
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+
+  line    Line    @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, processId], name: "unique_line_process")
+  @@map("line_process")
 }
 
 model Task {

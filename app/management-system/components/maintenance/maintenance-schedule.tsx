@@ -101,52 +101,52 @@ export default function MaintenanceSchedule() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Preventive Maintenance Schedule</h2>
-          <p className="text-sm text-gray-500">Manage automated maintenance schedules</p>
+          <h2 className="text-xl font-bold text-gray-900">Preventive Maintenance Schedule</h2>
+          <p className="text-xs text-gray-500">Manage automated maintenance schedules</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
         >
-          <Plus size={20} />
+          <Plus size={16} />
           New Schedule
         </button>
       </div>
 
       {/* Schedule Types Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-xl p-6">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-blue-600 rounded-lg">
-              <Clock className="text-white" size={24} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-blue-600 rounded-md">
+              <Clock className="text-white" size={18} />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900 mb-2">Time-based Maintenance</h3>
-              <p className="text-sm text-gray-700">
+              <h3 className="font-semibold text-gray-900 text-sm mb-1">Time-based Maintenance</h3>
+              <p className="text-xs text-gray-700">
                 Scheduled at fixed intervals (hours, days, or cycles) regardless of machine condition.
               </p>
-              <p className="text-xs text-blue-700 mt-2 font-medium">
+              <p className="text-xs text-blue-700 mt-1 font-medium">
                 Active schedules: {schedules.filter(s => s.scheduleType === 'Time-based' && s.status === 'Active').length}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl p-6">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-green-600 rounded-lg">
-              <AlertCircle className="text-white" size={24} />
+        <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-green-600 rounded-md">
+              <AlertCircle className="text-white" size={18} />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900 mb-2">Condition-based Maintenance</h3>
-              <p className="text-sm text-gray-700">
+              <h3 className="font-semibold text-gray-900 text-sm mb-1">Condition-based Maintenance</h3>
+              <p className="text-xs text-gray-700">
                 Triggered when machine conditions exceed predefined thresholds (temperature, vibration, etc.)
               </p>
-              <p className="text-xs text-green-700 mt-2 font-medium">
+              <p className="text-xs text-green-700 mt-1 font-medium">
                 Active schedules: {schedules.filter(s => s.scheduleType === 'Condition-based' && s.status === 'Active').length}
               </p>
             </div>
@@ -155,22 +155,21 @@ export default function MaintenanceSchedule() {
       </div>
 
       {/* Schedule Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {schedules.map((schedule) => {
           const daysUntil = getDaysUntil(schedule.nextMaintenance);
-          
+
           return (
             <div
               key={schedule.id}
-              className={`bg-white rounded-xl shadow-sm border-2 p-6 ${
-                schedule.status === 'Active' ? 'border-gray-200' : 'border-gray-300 opacity-70'
-              }`}
+              className={`bg-white rounded-lg shadow-sm border p-4 ${schedule.status === 'Active' ? 'border-gray-200' : 'border-gray-300 opacity-70'
+                }`}
             >
               {/* Header */}
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
-                  <h3 className="font-bold text-lg text-gray-900">{schedule.machineName}</h3>
-                  <p className="text-sm text-gray-600">{schedule.machineId}</p>
+                  <h3 className="font-bold text-sm text-gray-900">{schedule.machineName}</h3>
+                  <p className="text-xs text-gray-600">{schedule.machineId}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {schedule.status === 'Active' ? (
@@ -178,32 +177,31 @@ export default function MaintenanceSchedule() {
                   ) : (
                     <Pause className="text-gray-600" size={20} />
                   )}
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                    schedule.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                  }`}>
+                  <span className={`px-2 py-1 rounded text-xs font-semibold ${schedule.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                    }`}>
                     {schedule.status}
                   </span>
                 </div>
               </div>
 
               {/* Schedule Type */}
-              <div className="mb-4 pb-4 border-b border-gray-200">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="mb-3 pb-3 border-b border-gray-200">
+                <div className="flex items-center gap-1.5 mb-1">
                   {schedule.scheduleType === 'Time-based' ? (
-                    <Clock className="text-blue-600" size={18} />
+                    <Clock className="text-blue-600" size={14} />
                   ) : (
-                    <AlertCircle className="text-green-600" size={18} />
+                    <AlertCircle className="text-green-600" size={14} />
                   )}
-                  <span className="text-sm font-semibold text-gray-700">{schedule.scheduleType}</span>
+                  <span className="text-xs font-semibold text-gray-700">{schedule.scheduleType}</span>
                 </div>
-                <p className="text-sm text-gray-600">{schedule.interval}</p>
+                <p className="text-xs text-gray-600">{schedule.interval}</p>
               </div>
 
               {/* Dates */}
-              <div className="space-y-3 mb-4">
+              <div className="space-y-2 mb-3">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Last Maintenance</p>
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p className="text-xs text-gray-500">Last Maintenance</p>
+                  <p className="text-xs font-semibold text-gray-900">
                     {new Date(schedule.lastMaintenance).toLocaleDateString('id-ID', {
                       day: 'numeric',
                       month: 'long',
@@ -213,9 +211,9 @@ export default function MaintenanceSchedule() {
                 </div>
 
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Next Maintenance</p>
+                  <p className="text-xs text-gray-500">Next Maintenance</p>
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">
+                    <p className="text-xs font-semibold text-gray-900">
                       {schedule.nextMaintenance === 'Condition-based' ? (
                         'Condition-based'
                       ) : (
@@ -271,13 +269,13 @@ export default function MaintenanceSchedule() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setSelectedSchedule(schedule)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-xs font-medium"
                 >
-                  <Edit size={16} />
+                  <Edit size={12} />
                   Edit
                 </button>
                 <button
-                  className="flex-1 px-3 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors text-sm font-medium"
+                  className="flex-1 px-2 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs font-medium"
                 >
                   {schedule.status === 'Active' ? 'Pause' : 'Activate'}
                 </button>
@@ -290,9 +288,9 @@ export default function MaintenanceSchedule() {
       {/* Modals */}
       {showForm && <PreventiveMaintenanceForm onClose={() => setShowForm(false)} />}
       {selectedSchedule && (
-        <PreventiveMaintenanceForm 
+        <PreventiveMaintenanceForm
           schedule={selectedSchedule}
-          onClose={() => setSelectedSchedule(null)} 
+          onClose={() => setSelectedSchedule(null)}
         />
       )}
     </div>

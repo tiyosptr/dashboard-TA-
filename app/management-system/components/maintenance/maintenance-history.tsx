@@ -112,17 +112,17 @@ export default function MaintenanceHistory() {
 
   const filteredHistory = historyData.filter(item => {
     const matchesSearch = item.machineId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.workOrderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.description.toLowerCase().includes(searchTerm.toLowerCase());
+      item.workOrderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesMachine = filterMachine === 'all' || item.machineId === filterMachine;
     const matchesType = filterType === 'all' || item.type === filterType;
-    
+
     let matchesDate = true;
     if (dateRange.start && dateRange.end) {
       const itemDate = new Date(item.date);
       matchesDate = itemDate >= new Date(dateRange.start) && itemDate <= new Date(dateRange.end);
     }
-    
+
     return matchesSearch && matchesMachine && matchesType && matchesDate;
   });
 
@@ -142,7 +142,7 @@ export default function MaintenanceHistory() {
   };
 
   const getTypeColor = (type: string) => {
-    switch(type) {
+    switch (type) {
       case 'Preventive': return 'bg-green-100 text-green-700';
       case 'Corrective': return 'bg-orange-100 text-orange-700';
       case 'Inspection': return 'bg-blue-100 text-blue-700';
@@ -151,83 +151,83 @@ export default function MaintenanceHistory() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Maintenance History</h2>
-          <p className="text-sm text-gray-500">Complete record of all maintenance activities</p>
+          <h2 className="text-xl font-bold text-gray-900">Maintenance History</h2>
+          <p className="text-xs text-gray-500">Complete record of all maintenance activities</p>
         </div>
         <button
           onClick={exportToCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
         >
-          <Download size={20} />
+          <Download size={16} />
           Export CSV
         </button>
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Total Records</span>
-            <Calendar className="text-blue-600" size={20} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-gray-600">Total Records</span>
+            <Calendar className="text-blue-600" size={16} />
           </div>
-          <p className="text-3xl font-bold text-gray-900">{filteredHistory.length}</p>
-          <p className="text-xs text-gray-500 mt-1">maintenance activities</p>
+          <p className="text-2xl font-bold text-gray-900">{filteredHistory.length}</p>
+          <p className="text-xs text-gray-500 mt-0.5">maintenance activities</p>
         </div>
 
-        <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Total Cost</span>
-            <DollarSign className="text-green-600" size={20} />
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-gray-600">Total Cost</span>
+            <DollarSign className="text-green-600" size={16} />
           </div>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-lg font-bold text-gray-900">
             Rp {totalCost.toLocaleString('id-ID')}
           </p>
-          <p className="text-xs text-gray-500 mt-1">maintenance expenses</p>
+          <p className="text-xs text-gray-500 mt-0.5">maintenance expenses</p>
         </div>
 
-        <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Total Hours</span>
-            <Clock className="text-orange-600" size={20} />
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-gray-600">Total Hours</span>
+            <Clock className="text-orange-600" size={16} />
           </div>
-          <p className="text-3xl font-bold text-gray-900">{totalDuration.toFixed(1)}h</p>
-          <p className="text-xs text-gray-500 mt-1">downtime for maintenance</p>
+          <p className="text-2xl font-bold text-gray-900">{totalDuration.toFixed(1)}h</p>
+          <p className="text-xs text-gray-500 mt-0.5">downtime for maintenance</p>
         </div>
 
-        <div className="bg-white border-2 border-gray-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-600">Avg. Duration</span>
-            <Clock className="text-purple-600" size={20} />
+        <div className="bg-white border border-gray-200 rounded-lg p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-gray-600">Avg. Duration</span>
+            <Clock className="text-purple-600" size={16} />
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-2xl font-bold text-gray-900">
             {filteredHistory.length > 0 ? (totalDuration / filteredHistory.length).toFixed(1) : 0}h
           </p>
-          <p className="text-xs text-gray-500 mt-1">per maintenance</p>
+          <p className="text-xs text-gray-500 mt-0.5">per maintenance</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
               placeholder="Search history..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <select
             value={filterMachine}
             onChange={(e) => setFilterMachine(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Machines</option>
             <option value="M-001">M-001</option>
@@ -241,7 +241,7 @@ export default function MaintenanceHistory() {
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Types</option>
             <option value="Preventive">Preventive</option>
@@ -254,46 +254,46 @@ export default function MaintenanceHistory() {
               type="date"
               value={dateRange.start}
               onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="date"
               value={dateRange.end}
               onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
       </div>
 
       {/* History Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Date
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Machine
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Work Order
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Type
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Description
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Technician
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Duration
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   Cost
                 </th>
               </tr>
@@ -301,10 +301,10 @@ export default function MaintenanceHistory() {
             <tbody className="divide-y divide-gray-200">
               {filteredHistory.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <Calendar size={16} className="text-gray-400" />
-                      <span className="text-sm text-gray-900">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar size={12} className="text-gray-400" />
+                      <span className="text-xs text-gray-900">
                         {new Date(item.date).toLocaleDateString('id-ID', {
                           day: 'numeric',
                           month: 'short',
@@ -313,46 +313,46 @@ export default function MaintenanceHistory() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm font-semibold text-gray-900">{item.machineId}</span>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <span className="text-xs font-semibold text-gray-900">{item.machineId}</span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="text-sm text-blue-600 hover:underline cursor-pointer">
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <span className="text-xs text-blue-600 hover:underline cursor-pointer">
                       {item.workOrderId}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getTypeColor(item.type)}`}>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getTypeColor(item.type)}`}>
                       {item.type}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900 max-w-xs">
+                  <td className="px-3 py-2.5">
+                    <div className="text-xs text-gray-900 max-w-xs">
                       {item.description}
                     </div>
                     {item.partsUsed.length > 0 && (
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-gray-500 mt-0.5">
                         Parts: {item.partsUsed.slice(0, 2).join(', ')}
                         {item.partsUsed.length > 2 && ` +${item.partsUsed.length - 2} more`}
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <User size={16} className="text-gray-400" />
-                      <span className="text-sm text-gray-700">{item.technician}</span>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <User size={12} className="text-gray-400" />
+                      <span className="text-xs text-gray-700">{item.technician}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <Clock size={16} className="text-gray-400" />
-                      <span className="text-sm text-gray-900">{item.duration}</span>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <Clock size={12} className="text-gray-400" />
+                      <span className="text-xs text-gray-900">{item.duration}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <DollarSign size={16} className="text-gray-400" />
-                      <span className="text-sm font-semibold text-gray-900">{item.cost}</span>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <DollarSign size={12} className="text-gray-400" />
+                      <span className="text-xs font-semibold text-gray-900">{item.cost}</span>
                     </div>
                   </td>
                 </tr>

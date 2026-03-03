@@ -167,13 +167,13 @@ export default function MachineList() {
 
   const filteredMachines = machines.filter(machine => {
     const matchesSearch = machine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         machine.id.toLowerCase().includes(searchTerm.toLowerCase());
+      machine.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterStatus === 'all' || machine.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
 
   const getStatusIcon = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'running': return <CheckCircle size={18} />;
       case 'warning': return <AlertTriangle size={18} />;
       case 'downtime': return <AlertTriangle size={18} />;
@@ -183,7 +183,7 @@ export default function MachineList() {
   };
 
   const getStatusStyle = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'running': return 'bg-green-500 shadow-green-500/50';
       case 'warning': return 'bg-yellow-500 shadow-yellow-500/50';
       case 'downtime': return 'bg-red-500 shadow-red-500/50';
@@ -193,7 +193,7 @@ export default function MachineList() {
   };
 
   const getCardBorderStyle = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'running': return 'border-green-200 hover:border-green-400 hover:shadow-green-100';
       case 'warning': return 'border-yellow-200 hover:border-yellow-400 hover:shadow-yellow-100';
       case 'downtime': return 'border-red-200 hover:border-red-400 hover:shadow-red-100';
@@ -208,82 +208,82 @@ export default function MachineList() {
   }, {} as Record<string, number>);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header with Gradient */}
-      <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 rounded-2xl p-6 shadow-xl">
-        <h2 className="text-3xl font-bold text-white mb-2">Machine Management</h2>
-        <p className="text-blue-100">Real-time monitoring and control of all production machines</p>
+      <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 rounded-xl p-4 shadow-lg">
+        <h2 className="text-xl font-bold text-white mb-1">Machine Management</h2>
+        <p className="text-blue-100 text-sm">Real-time monitoring and control of all production machines</p>
       </div>
 
       {/* Stats Cards - Modern Design */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-5 border-2 border-green-200 shadow-lg hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 bg-green-100 rounded-lg group-hover:scale-110 transition-transform">
-              <CheckCircle className="text-green-600" size={24} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-lg p-3 border border-green-200 shadow-md hover:shadow-lg transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="p-1.5 bg-green-100 rounded-md group-hover:scale-110 transition-transform">
+              <CheckCircle className="text-green-600" size={18} />
             </div>
-            <TrendingUp className="text-green-500" size={20} />
+            <TrendingUp className="text-green-500" size={16} />
           </div>
-          <p className="text-sm font-medium text-gray-600 mb-1">Running</p>
-          <p className="text-4xl font-bold text-green-600">{statusCounts.running || 0}</p>
-          <p className="text-xs text-gray-500 mt-2">Operating normally</p>
+          <p className="text-xs font-medium text-gray-600 mb-0.5">Running</p>
+          <p className="text-2xl font-bold text-green-600">{statusCounts.running || 0}</p>
+          <p className="text-xs text-gray-500 mt-1">Operating normally</p>
         </div>
 
-        <div className="bg-white rounded-xl p-5 border-2 border-yellow-200 shadow-lg hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 bg-yellow-100 rounded-lg group-hover:scale-110 transition-transform">
-              <AlertTriangle className="text-yellow-600" size={24} />
+        <div className="bg-white rounded-lg p-3 border border-yellow-200 shadow-md hover:shadow-lg transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="p-1.5 bg-yellow-100 rounded-md group-hover:scale-110 transition-transform">
+              <AlertTriangle className="text-yellow-600" size={18} />
             </div>
-            <Zap className="text-yellow-500" size={20} />
+            <Zap className="text-yellow-500" size={16} />
           </div>
-          <p className="text-sm font-medium text-gray-600 mb-1">Warning</p>
-          <p className="text-4xl font-bold text-yellow-600">{statusCounts.warning || 0}</p>
-          <p className="text-xs text-gray-500 mt-2">Needs attention</p>
+          <p className="text-xs font-medium text-gray-600 mb-0.5">Warning</p>
+          <p className="text-2xl font-bold text-yellow-600">{statusCounts.warning || 0}</p>
+          <p className="text-xs text-gray-500 mt-1">Needs attention</p>
         </div>
 
-        <div className="bg-white rounded-xl p-5 border-2 border-red-200 shadow-lg hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 bg-red-100 rounded-lg group-hover:scale-110 transition-transform">
-              <AlertTriangle className="text-red-600" size={24} />
+        <div className="bg-white rounded-lg p-3 border border-red-200 shadow-md hover:shadow-lg transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="p-1.5 bg-red-100 rounded-md group-hover:scale-110 transition-transform">
+              <AlertTriangle className="text-red-600" size={18} />
             </div>
-            <TrendingDown className="text-red-500" size={20} />
+            <TrendingDown className="text-red-500" size={16} />
           </div>
-          <p className="text-sm font-medium text-gray-600 mb-1">Downtime</p>
-          <p className="text-4xl font-bold text-red-600">{statusCounts.downtime || 0}</p>
-          <p className="text-xs text-gray-500 mt-2">Not operational</p>
+          <p className="text-xs font-medium text-gray-600 mb-0.5">Downtime</p>
+          <p className="text-2xl font-bold text-red-600">{statusCounts.downtime || 0}</p>
+          <p className="text-xs text-gray-500 mt-1">Not operational</p>
         </div>
 
-        <div className="bg-white rounded-xl p-5 border-2 border-blue-200 shadow-lg hover:shadow-xl transition-all group">
-          <div className="flex items-center justify-between mb-3">
-            <div className="p-2 bg-blue-100 rounded-lg group-hover:scale-110 transition-transform">
-              <Wrench className="text-blue-600" size={24} />
+        <div className="bg-white rounded-lg p-3 border border-blue-200 shadow-md hover:shadow-lg transition-all group">
+          <div className="flex items-center justify-between mb-2">
+            <div className="p-1.5 bg-blue-100 rounded-md group-hover:scale-110 transition-transform">
+              <Wrench className="text-blue-600" size={18} />
             </div>
-            <Activity className="text-blue-500" size={20} />
+            <Activity className="text-blue-500" size={16} />
           </div>
-          <p className="text-sm font-medium text-gray-600 mb-1">Maintenance</p>
-          <p className="text-4xl font-bold text-blue-600">{statusCounts.maintenance || 0}</p>
-          <p className="text-xs text-gray-500 mt-2">Under service</p>
+          <p className="text-xs font-medium text-gray-600 mb-0.5">Maintenance</p>
+          <p className="text-2xl font-bold text-blue-600">{statusCounts.maintenance || 0}</p>
+          <p className="text-xs text-gray-500 mt-1">Under service</p>
         </div>
       </div>
 
       {/* Enhanced Filters */}
-      <div className="bg-white rounded-xl shadow-md p-5 border border-gray-200">
-        <div className="flex flex-col sm:flex-row gap-4">
+      <div className="bg-white rounded-lg shadow-md p-3 border border-gray-200">
+        <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
             <input
               type="text"
               placeholder="Search by machine name or ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
-          
+
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-5 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium cursor-pointer transition-all"
+            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium cursor-pointer transition-all"
           >
             <option value="all">All Status</option>
             <option value="running">Running</option>
@@ -295,65 +295,64 @@ export default function MachineList() {
       </div>
 
       {/* Machine Grid - Enhanced Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredMachines.map((machine) => (
           <div
             key={machine.id}
             onClick={() => setSelectedMachine(machine)}
-            className={`bg-white rounded-2xl shadow-lg border-2 p-6 cursor-pointer hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 ${getCardBorderStyle(machine.status)}`}
+            className={`bg-white rounded-xl shadow-md border p-4 cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 ${getCardBorderStyle(machine.status)}`}
           >
             {/* Header with Status Badge */}
-            <div className="flex items-start justify-between mb-5">
+            <div className="flex items-start justify-between mb-3">
               <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-bold text-lg text-gray-900">{machine.name}</h3>
-                  <div className={`w-3 h-3 rounded-full animate-pulse shadow-lg ${getStatusStyle(machine.status)}`}></div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <h3 className="font-bold text-sm text-gray-900">{machine.name}</h3>
+                  <div className={`w-2.5 h-2.5 rounded-full animate-pulse shadow-md ${getStatusStyle(machine.status)}`}></div>
                 </div>
-                <p className="text-sm text-gray-500 flex items-center gap-1">
-                  <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded">{machine.id}</span>
+                <p className="text-xs text-gray-500 flex items-center gap-1">
+                  <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{machine.id}</span>
                   <span>•</span>
                   <span>{machine.location}</span>
                 </p>
               </div>
-              <div className={`p-2 rounded-lg ${machine.status === 'running' ? 'bg-green-100 text-green-600' : machine.status === 'warning' ? 'bg-yellow-100 text-yellow-600' : machine.status === 'downtime' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+              <div className={`p-1.5 rounded-md ${machine.status === 'running' ? 'bg-green-100 text-green-600' : machine.status === 'warning' ? 'bg-yellow-100 text-yellow-600' : machine.status === 'downtime' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                 {getStatusIcon(machine.status)}
               </div>
             </div>
 
             {/* OEE Progress */}
-            <div className="mb-5">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-semibold text-gray-700">Overall OEE</span>
-                <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <div className="mb-3">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-xs font-semibold text-gray-700">Overall OEE</span>
+                <span className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                   {machine.metrics.oee}%
                 </span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
                 <div
-                  className={`h-3 rounded-full transition-all duration-500 ${
-                    machine.metrics.oee >= 85 ? 'bg-gradient-to-r from-green-500 to-green-600' :
-                    machine.metrics.oee >= 70 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
-                    'bg-gradient-to-r from-red-500 to-red-600'
-                  }`}
+                  className={`h-2 rounded-full transition-all duration-500 ${machine.metrics.oee >= 85 ? 'bg-gradient-to-r from-green-500 to-green-600' :
+                      machine.metrics.oee >= 70 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
+                        'bg-gradient-to-r from-red-500 to-red-600'
+                    }`}
                   style={{ width: `${machine.metrics.oee}%` }}
                 ></div>
               </div>
             </div>
 
             {/* Key Metrics Grid */}
-            <div className="grid grid-cols-2 gap-4 mb-5">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 border border-blue-200">
-                <p className="text-xs text-gray-600 mb-1">Output</p>
-                <p className="text-xl font-bold text-blue-700">
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-md p-2 border border-blue-200">
+                <p className="text-xs text-gray-600">Output</p>
+                <p className="text-base font-bold text-blue-700">
                   {(machine.metrics.actualOutput / 1000).toFixed(1)}k
                 </p>
                 <p className="text-xs text-gray-500">
                   of {(machine.metrics.targetOutput / 1000).toFixed(1)}k
                 </p>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3 border border-purple-200">
-                <p className="text-xs text-gray-600 mb-1">Throughput</p>
-                <p className="text-xl font-bold text-purple-700">
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-md p-2 border border-purple-200">
+                <p className="text-xs text-gray-600">Throughput</p>
+                <p className="text-base font-bold text-purple-700">
                   {machine.metrics.throughput}
                 </p>
                 <p className="text-xs text-gray-500">units/hour</p>
@@ -361,29 +360,28 @@ export default function MachineList() {
             </div>
 
             {/* Performance Indicators */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-3 gap-2 mb-3">
               <div className="text-center">
-                <p className="text-xs text-gray-500 mb-1">Cycle</p>
-                <p className={`text-sm font-bold ${
-                  machine.metrics.cycleTime > machine.metrics.targetCycleTime * 1.1 ? 'text-red-600' : 'text-green-600'
-                }`}>
+                <p className="text-xs text-gray-500">Cycle</p>
+                <p className={`text-xs font-bold ${machine.metrics.cycleTime > machine.metrics.targetCycleTime * 1.1 ? 'text-red-600' : 'text-green-600'
+                  }`}>
                   {machine.metrics.cycleTime}s
                 </p>
               </div>
               <div className="text-center border-x border-gray-200">
-                <p className="text-xs text-gray-500 mb-1">Quality</p>
-                <p className="text-sm font-bold text-green-600">{machine.metrics.quality}%</p>
+                <p className="text-xs text-gray-500">Quality</p>
+                <p className="text-xs font-bold text-green-600">{machine.metrics.quality}%</p>
               </div>
               <div className="text-center">
-                <p className="text-xs text-gray-500 mb-1">Reject</p>
-                <p className="text-sm font-bold text-red-600">{machine.metrics.reject}</p>
+                <p className="text-xs text-gray-500">Reject</p>
+                <p className="text-xs font-bold text-red-600">{machine.metrics.reject}</p>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="pt-4 border-t border-gray-200 flex items-center justify-between text-xs">
+            <div className="pt-2 border-t border-gray-200 flex items-center justify-between text-xs">
               <span className="text-gray-600 flex items-center gap-1">
-                <Activity size={12} />
+                <Activity size={10} />
                 {machine.totalRunningHours}h runtime
               </span>
               <span className="text-blue-600 font-medium">
@@ -404,9 +402,9 @@ export default function MachineList() {
 
       {/* Machine Detail Modal */}
       {selectedMachine && (
-        <MachineDetail 
-          machine={selectedMachine} 
-          onClose={() => setSelectedMachine(null)} 
+        <MachineDetail
+          machine={selectedMachine}
+          onClose={() => setSelectedMachine(null)}
         />
       )}
     </div>
