@@ -18,6 +18,63 @@ export const revalidate = 10
  *   []    = no matches (return empty)
  *   [...] = list of matching data_item IDs
  */
+/**
+ * Helper: Supabase `.in()` has a URL-length limit (~100 items).
+ * This function splits the IDs into chunks, runs parallel queries,
+ * and merges the results.
+ */
+const CHUNK_SIZE = 50
+
+async function chunkedInQuery(
+    table: string,
+    selectFields: string,
+    filterColumn: string,
+    filterValues: string[],
+    extraFilters?: (query: any) => any,
+): Promise<any[]> {
+    if (filterValues.length === 0) return []
+
+    const chunks: string[][] = []
+    for (let i = 0; i < filterValues.length; i += CHUNK_SIZE) {
+        chunks.push(filterValues.slice(i, i + CHUNK_SIZE))
+    }
+
+    const results = await Promise.all(
+        chunks.map(async (chunk) => {
+            let query = supabaseAdmin
+                .from(table)
+                .select(selectFields)
+                .in(filterColumn, chunk)
+
+            if (extraFilters) {
+                query = extraFilters(query)
+            }
+
+            const { data, error } = await query
+            if (error) {
+                console.error(`Error querying ${table} (chunk):`, error)
+                return []
+            }
+            return data || []
+        })
+    )
+
+    return results.flat()
+}
+
+/**
+ * Resolve data_item IDs matching line and/or PN filters.
+ * 
+ * Schema chain:
+ *   actual_output → data_items (via data_item_id)
+ *   data_items → line_process (via line_process_id) → has line_id
+ *   data_items → sn (via sn column) → pn (via part_number_id) → has part_number
+ * 
+ * Returns:
+ *   null  = no filter needed (get all actual_output)
+ *   []    = no matches (return empty)
+ *   [...] = list of matching data_item IDs
+ */
 async function getFilteredDataItemIds(
     lineId: string | null,
     pn: string | null,
@@ -39,7 +96,6 @@ async function getFilteredDataItemIds(
 
     // 2) PN filter → find SN IDs for that part number
     if (pn) {
-        // Find pn record(s) matching the part_number string
         const { data: pnData } = await supabaseAdmin
             .from('pn')
             .select('id')
@@ -49,24 +105,51 @@ async function getFilteredDataItemIds(
 
         const pnIds = pnData.map((p: any) => p.id)
 
-        // Find serial numbers (sn) belonging to those PNs
-        const { data: snData } = await supabaseAdmin
-            .from('sn')
-            .select('id')
-            .in('part_number_id', pnIds)
-
-        snIds = snData?.map((s: any) => s.id) || []
+        // Find serial numbers (sn) belonging to those PNs (chunked)
+        const snData = await chunkedInQuery('sn', 'id', 'part_number_id', pnIds)
+        snIds = snData.map((s: any) => s.id)
         if (snIds.length === 0) return [] // no SNs for this PN
     }
 
-    // 3) Find data_items matching both constraints
+    // 3) Find data_items matching constraints (chunked if needed)
+    // If we have lineProcessIds filter, use chunked query
+    if (lineProcessIds !== null && lineProcessIds.length > CHUNK_SIZE) {
+        // Batch by lineProcessIds
+        const diData = await chunkedInQuery(
+            'data_items', 'id', 'line_process_id', lineProcessIds,
+            snIds !== null ? (q: any) => q.in('sn', snIds!.slice(0, CHUNK_SIZE)) : undefined,
+        )
+        // If also filtering by snIds and snIds is large, do a second pass
+        if (snIds !== null && snIds.length > CHUNK_SIZE) {
+            const diIds = new Set(diData.map((d: any) => d.id))
+            // Re-query with snIds chunked, filtered to lineProcessIds
+            const diData2 = await chunkedInQuery(
+                'data_items', 'id', 'sn', snIds,
+                (q: any) => q.in('line_process_id', lineProcessIds!.slice(0, CHUNK_SIZE)),
+            )
+            diData2.forEach((d: any) => diIds.add(d.id))
+            return Array.from(diIds)
+        }
+        return diData.map((d: any) => d.id)
+    }
+
+    // Standard path: lineProcessIds is small or null
     let diQuery = supabaseAdmin.from('data_items').select('id')
 
     if (lineProcessIds !== null) {
         diQuery = diQuery.in('line_process_id', lineProcessIds)
     }
-    if (snIds !== null) {
+    if (snIds !== null && snIds.length <= CHUNK_SIZE) {
         diQuery = diQuery.in('sn', snIds)
+    } else if (snIds !== null) {
+        // snIds is large, use chunked approach
+        const diData = await chunkedInQuery(
+            'data_items', 'id', 'sn', snIds,
+            lineProcessIds !== null
+                ? (q: any) => q.in('line_process_id', lineProcessIds!)
+                : undefined,
+        )
+        return diData.map((d: any) => d.id)
     }
 
     const { data: diData } = await diQuery
@@ -75,6 +158,7 @@ async function getFilteredDataItemIds(
 
 /**
  * Query actual_output rows, optionally filtered by data_item IDs.
+ * Uses chunked queries when there are too many IDs for a single `.in()`.
  */
 async function queryActualOutput(
     dataItemIds: string[] | null,
@@ -85,23 +169,32 @@ async function queryActualOutput(
     // dataItemIds === [] → no matches, return empty
     if (dataItemIds !== null && dataItemIds.length === 0) return []
 
-    let query = supabaseAdmin
-        .from('actual_output')
-        .select(selectFields)
-        .gte('created_at', startDate.toISOString())
-        .lte('created_at', endDate.toISOString())
+    // No filter needed — query all
+    if (dataItemIds === null) {
+        const { data, error } = await supabaseAdmin
+            .from('actual_output')
+            .select(selectFields)
+            .gte('created_at', startDate.toISOString())
+            .lte('created_at', endDate.toISOString())
 
-    // Apply data_item_id filter if needed
-    if (dataItemIds !== null && dataItemIds.length > 0) {
-        query = query.in('data_item_id', dataItemIds)
+        if (error) {
+            console.error('Error querying actual_output:', error)
+            return []
+        }
+        return data || []
     }
 
-    const { data, error } = await query
-    if (error) {
-        console.error('Error querying actual_output:', error)
-        return []
-    }
-    return data || []
+    // Filter by data_item_ids — use chunked queries to avoid URL limit
+    const results = await chunkedInQuery(
+        'actual_output',
+        selectFields,
+        'data_item_id',
+        dataItemIds,
+        (query: any) => query
+            .gte('created_at', startDate.toISOString())
+            .lte('created_at', endDate.toISOString()),
+    )
+    return results
 }
 
 /**
@@ -152,7 +245,7 @@ export async function GET(request: NextRequest) {
             const todayEnd = new Date(todayStart)
             todayEnd.setHours(23, 59, 59, 999)
 
-            // 1. Actual Output — filtered by data_item IDs
+            // 1. Actual Output — filtered by data_item IDs (today only)
             const actualOutputs = await queryActualOutput(dataItemIds, todayStart, todayEnd)
 
             const hourSlots = Array.from({ length: 24 }, (_, i) => {

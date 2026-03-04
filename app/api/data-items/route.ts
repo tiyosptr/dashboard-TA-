@@ -5,17 +5,20 @@ import prisma from '@/lib/prisma'
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams
-        const pn = searchParams.get('pn')
-        const lineId = searchParams.get('lineId')
+        const lineProcessId = searchParams.get('lineProcessId')
         const status = searchParams.get('status')
 
         const where: any = {}
-        if (pn) where.pn = pn
-        if (lineId) where.lineId = lineId
+        if (lineProcessId) where.lineProcessId = lineProcessId
         if (status) where.status = status
 
         const dataItems = await prisma.dataItem.findMany({
             where,
+            include: {
+                snRelation: true,
+                lineProcess: true,
+                actualOutputs: true,
+            },
             orderBy: { createdAt: 'desc' },
         })
 
@@ -26,67 +29,14 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// Helper to calculate hour slot
-function calculateHourSlot(date: Date): string {
-    const hour = date.getHours();
-    const nextHour = (hour + 1) % 24;
-    return `${hour.toString().padStart(2, '0')}:00-${nextHour.toString().padStart(2, '0')}:00`;
-}
-
-// POST create new data item and update actual output
+// POST create new data item
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
 
-        // 1. Create DataItem
         const dataItem = await prisma.dataItem.create({
             data: body,
         })
-
-        // 2. Immediately update ActualOutput
-        if (dataItem.lineId && dataItem.pn) {
-            try {
-                const createdAt = dataItem.createdAt ? new Date(dataItem.createdAt) : new Date();
-                const dateOnly = new Date(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate()); // Strip time
-                const hourSlot = calculateHourSlot(createdAt);
-                const shiftNumber = 1; // Default shift logic
-
-                const isPass = dataItem.status === 'pass';
-                const isReject = dataItem.status === 'reject';
-
-                if (isPass || isReject) {
-                    await prisma.actualOutput.upsert({
-                        where: {
-                            actual_output_line_id_shift_number_hour_slot_date_pn_key: {
-                                lineId: dataItem.lineId,
-                                shiftNumber: shiftNumber,
-                                hourSlot: hourSlot,
-                                date: dateOnly,
-                                pn: dataItem.pn
-                            }
-                        },
-                        update: {
-                            output: isPass ? { increment: 1 } : undefined,
-                            reject: isReject ? { increment: 1 } : undefined,
-                            updatedAt: new Date()
-                        },
-                        create: {
-                            lineId: dataItem.lineId,
-                            shiftNumber: shiftNumber,
-                            hourSlot: hourSlot,
-                            date: dateOnly,
-                            pn: dataItem.pn,
-                            output: isPass ? 1 : 0,
-                            reject: isReject ? 1 : 0,
-                            targetOutput: 1000 // Default target
-                        }
-                    });
-                }
-            } catch (updateError) {
-                console.error('Error auto-updating ActualOutput:', updateError);
-                // We don't fail the request if the auto-update fails, but we log it.
-            }
-        }
 
         return NextResponse.json(dataItem, { status: 201 })
     } catch (error) {
@@ -99,14 +49,14 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
     try {
         const body = await request.json()
-        const { sn, ...data } = body
+        const { id, ...data } = body
 
-        if (!sn) {
-            return NextResponse.json({ error: 'SN is required' }, { status: 400 })
+        if (!id) {
+            return NextResponse.json({ error: 'ID is required' }, { status: 400 })
         }
 
         const dataItem = await prisma.dataItem.update({
-            where: { sn },
+            where: { id },
             data,
         })
 
@@ -121,14 +71,14 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams
-        const sn = searchParams.get('sn')
+        const id = searchParams.get('id')
 
-        if (!sn) {
-            return NextResponse.json({ error: 'SN is required' }, { status: 400 })
+        if (!id) {
+            return NextResponse.json({ error: 'ID is required' }, { status: 400 })
         }
 
         await prisma.dataItem.delete({
-            where: { sn },
+            where: { id },
         })
 
         return NextResponse.json({ message: 'Data item deleted successfully' })

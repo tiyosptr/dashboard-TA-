@@ -1,412 +1,1035 @@
-// app/management-system/components/machines/machine-list.tsx
 'use client';
 
-import { useState } from 'react';
-import { Search, Activity, AlertTriangle, CheckCircle, Wrench, TrendingUp, TrendingDown, Zap } from 'lucide-react';
-import MachineDetail from './machine-detail';
-import { MachineDetail as MachineDetailType } from '@/types';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  Search, Activity, AlertTriangle, CheckCircle, Wrench,
+  TrendingUp, TrendingDown, Zap, RefreshCw, Filter,
+  ChevronRight, Settings, X, ArrowUpRight, ArrowDownRight,
+  BarChart3, Clock, Gauge, Shield, Box, Cpu,
+  Play, PauseCircle, PowerOff, Plus
+} from 'lucide-react';
+import {
+  Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement,
+  PointElement, ArcElement, Title, Tooltip, Legend, Filler
+} from 'chart.js';
+import { Bar, Line, Doughnut } from 'react-chartjs-2';
+import { AddMachineModal } from './add-machine-modal';
 
-export default function MachineList() {
-  const [selectedMachine, setSelectedMachine] = useState<MachineDetailType | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
+ChartJS.register(
+  CategoryScale, LinearScale, BarElement, LineElement,
+  PointElement, ArcElement, Title, Tooltip, Legend, Filler
+);
 
-  // Mock data with detailed metrics
-  const machines: MachineDetailType[] = [
-    {
-      id: 'M-001',
-      name: 'Injection Molding #1',
-      location: 'Line A - Zone 1',
-      status: 'running',
-      metrics: {
-        actualOutput: 4520,
-        targetOutput: 4800,
-        reject: 45,
-        throughput: 565,
-        cycleTime: 3.2,
-        targetCycleTime: 3.0,
-        oee: 88.5,
-        availability: 92.0,
-        performance: 94.2,
-        quality: 99.0,
-        uptime: 22.08,
-        downtime: 1.92,
-        temperature: 68,
-        vibration: 2.1,
-      },
-      lastMaintenance: '2025-01-10',
-      nextMaintenance: '2025-02-10',
-      totalRunningHours: 1250,
-    },
-    {
-      id: 'M-002',
-      name: 'Injection Molding #2',
-      location: 'Line A - Zone 2',
-      status: 'running',
-      metrics: {
-        actualOutput: 4350,
-        targetOutput: 4800,
-        reject: 52,
-        throughput: 544,
-        cycleTime: 3.3,
-        targetCycleTime: 3.0,
-        oee: 85.2,
-        availability: 90.0,
-        performance: 92.5,
-        quality: 98.8,
-        uptime: 21.6,
-        downtime: 2.4,
-        temperature: 72,
-        vibration: 2.3,
-      },
-      lastMaintenance: '2025-01-12',
-      nextMaintenance: '2025-02-12',
-      totalRunningHours: 1180,
-    },
-    {
-      id: 'M-003',
-      name: 'Injection Molding #3',
-      location: 'Line A - Zone 3',
-      status: 'warning',
-      metrics: {
-        actualOutput: 3800,
-        targetOutput: 4800,
-        reject: 120,
-        throughput: 475,
-        cycleTime: 3.8,
-        targetCycleTime: 3.0,
-        oee: 72.5,
-        availability: 85.0,
-        performance: 86.5,
-        quality: 96.8,
-        uptime: 20.4,
-        downtime: 3.6,
-        temperature: 82,
-        vibration: 3.2,
-      },
-      lastMaintenance: '2024-12-28',
-      nextMaintenance: '2025-01-28',
-      totalRunningHours: 1420,
-    },
-    {
-      id: 'M-004',
-      name: 'Extruder #4',
-      location: 'Line B - Zone 1',
-      status: 'running',
-      metrics: {
-        actualOutput: 3200,
-        targetOutput: 3600,
-        reject: 32,
-        throughput: 400,
-        cycleTime: 4.5,
-        targetCycleTime: 4.0,
-        oee: 82.0,
-        availability: 88.0,
-        performance: 90.0,
-        quality: 99.0,
-        uptime: 21.12,
-        downtime: 2.88,
-        temperature: 75,
-        vibration: 2.5,
-      },
-      lastMaintenance: '2025-01-08',
-      nextMaintenance: '2025-02-08',
-      totalRunningHours: 980,
-    },
-    {
-      id: 'M-005',
-      name: 'Extruder #5',
-      location: 'Line C - Zone 1',
-      status: 'downtime',
-      metrics: {
-        actualOutput: 1800,
-        targetOutput: 3600,
-        reject: 180,
-        throughput: 225,
-        cycleTime: 8.0,
-        targetCycleTime: 4.0,
-        oee: 45.0,
-        availability: 50.0,
-        performance: 50.0,
-        quality: 90.0,
-        uptime: 12.0,
-        downtime: 12.0,
-        temperature: 95,
-        vibration: 4.5,
-      },
-      lastMaintenance: '2025-01-05',
-      nextMaintenance: '2025-02-05',
-      totalRunningHours: 1350,
-    },
-    {
-      id: 'M-006',
-      name: 'Welding Machine #6',
-      location: 'Line D - Zone 1',
-      status: 'maintenance',
-      metrics: {
-        actualOutput: 0,
-        targetOutput: 2400,
-        reject: 0,
-        throughput: 0,
-        cycleTime: 0,
-        targetCycleTime: 6.0,
-        oee: 0,
-        availability: 0,
-        performance: 0,
-        quality: 0,
-        uptime: 0,
-        downtime: 24.0,
-        temperature: 45,
-        vibration: 0,
-      },
-      lastMaintenance: '2025-01-15',
-      nextMaintenance: '2025-02-15',
-      totalRunningHours: 850,
-    },
-  ];
+// ─── Types ───────────────────────────────────────────────────────────
+interface MachineData {
+  id: string;
+  name_machine: string;
+  status: string;
+  next_maintenance: string | null;
+  last_maintenance: string | null;
+  total_running_hours: string | null;
+  total_downtime_hours: string | null;
+  line_name: string | null;
+  line_id: string | null;
+  process_name: string | null;
+  process_order: number;
+}
 
-  const filteredMachines = machines.filter(machine => {
-    const matchesSearch = machine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      machine.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || machine.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+interface LineOption {
+  id: string;
+  name: string;
+}
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'running': return <CheckCircle size={18} />;
-      case 'warning': return <AlertTriangle size={18} />;
-      case 'downtime': return <AlertTriangle size={18} />;
-      case 'maintenance': return <Wrench size={18} />;
-      default: return <Activity size={18} />;
-    }
+// Simulated metrics - in production these would come from real sensor data
+function generateMetrics(machine: MachineData) {
+  const seed = machine.id.charCodeAt(0) + machine.id.charCodeAt(machine.id.length - 1);
+  const rand = (min: number, max: number) => {
+    const x = Math.sin(seed * 9301 + 49297) % 49297;
+    return min + (Math.abs(x) / 49297) * (max - min);
   };
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'running': return 'bg-green-500 shadow-green-500/50';
-      case 'warning': return 'bg-yellow-500 shadow-yellow-500/50';
-      case 'downtime': return 'bg-red-500 shadow-red-500/50';
-      case 'maintenance': return 'bg-blue-500 shadow-blue-500/50';
-      default: return 'bg-gray-500 shadow-gray-500/50';
-    }
-  };
+  const s = machine.status?.toLowerCase() || '';
+  const statusMultiplier = s === 'active' ? 1
+    : (s === 'on hold' || s === 'on-hold' || s === 'onhold') ? 0.75
+      : (s === 'maintenance' || s === 'inactive') ? 0
+        : 0.3; // downtime
 
-  const getCardBorderStyle = (status: string) => {
-    switch (status) {
-      case 'running': return 'border-green-200 hover:border-green-400 hover:shadow-green-100';
-      case 'warning': return 'border-yellow-200 hover:border-yellow-400 hover:shadow-yellow-100';
-      case 'downtime': return 'border-red-200 hover:border-red-400 hover:shadow-red-100';
-      case 'maintenance': return 'border-blue-200 hover:border-blue-400 hover:shadow-blue-100';
-      default: return 'border-gray-200 hover:border-gray-400';
-    }
-  };
+  const isOff = s === 'maintenance' || s === 'inactive';
+  const oee = isOff ? 0 : Math.round(rand(45, 95) * statusMultiplier);
+  const output = Math.round(rand(800, 4800) * statusMultiplier);
+  const targetOutput = Math.round(rand(3600, 5000));
+  const throughput = Math.round(rand(200, 600) * statusMultiplier);
+  const cycleTime = isOff ? 0 : +(rand(2.5, 8.0)).toFixed(1);
+  const quality = isOff ? 0 : Math.round(rand(90, 99.5) * 10) / 10;
+  const reject = Math.round(rand(10, 200) * (statusMultiplier > 0 ? 1 : 0));
 
-  const statusCounts = machines.reduce((acc, machine) => {
-    acc[machine.status] = (acc[machine.status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  return { oee, output, targetOutput, throughput, cycleTime, quality, reject };
+}
+
+function formatDurationFromHours(hoursStr: string | null): string {
+  if (!hoursStr) return '0s';
+  const hours = parseFloat(hoursStr);
+  if (isNaN(hours) || hours <= 0) return '0s';
+
+  const totalSeconds = Math.round(hours * 3600);
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  if (totalSeconds < 3600) {
+    const min = Math.floor(totalSeconds / 60);
+    const sec = totalSeconds % 60;
+    return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
+  }
+
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+// ─── Status Helpers ──────────────────────────────────────────────────
+// 5 Statuses:
+// 1. ACTIVE     → Emerald  - Mesin sedang berjalan/beroperasi
+// 2. MAINTENANCE → Blue    - Mesin sedang dalam perawatan terjadwal
+// 3. ON HOLD    → Amber    - Mesin ditahan sementara, menunggu aksi
+// 4. DOWNTIME   → Rose     - Mesin berhenti karena masalah/kerusakan
+// 5. INACTIVE   → Slate    - Mesin tidak aktif/dimatikan
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any; dot: string; gradient: string }> = {
+  active: {
+    label: 'Active',
+    color: 'text-emerald-700',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-200',
+    icon: Play,
+    dot: 'bg-emerald-500',
+    gradient: 'from-emerald-500 to-emerald-600',
+  },
+  maintenance: {
+    label: 'Maintenance',
+    color: 'text-blue-700',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    icon: Wrench,
+    dot: 'bg-blue-500',
+    gradient: 'from-blue-500 to-blue-600',
+  },
+  onhold: {
+    label: 'On Hold',
+    color: 'text-amber-700',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    icon: PauseCircle,
+    dot: 'bg-amber-500',
+    gradient: 'from-amber-500 to-amber-600',
+  },
+  downtime: {
+    label: 'Downtime',
+    color: 'text-rose-700',
+    bg: 'bg-rose-50',
+    border: 'border-rose-200',
+    icon: AlertTriangle,
+    dot: 'bg-rose-500',
+    gradient: 'from-rose-500 to-rose-600',
+  },
+  inactive: {
+    label: 'Inactive',
+    color: 'text-slate-600',
+    bg: 'bg-slate-50',
+    border: 'border-slate-200',
+    icon: PowerOff,
+    dot: 'bg-slate-400',
+    gradient: 'from-slate-400 to-slate-500',
+  },
+};
+
+function getStatusConfig(status: string) {
+  const s = status?.toLowerCase() || '';
+  if (s === 'active' || s === 'running') return STATUS_CONFIG['active'];
+  if (s === 'maintenance') return STATUS_CONFIG['maintenance'];
+  if (s === 'on hold' || s === 'on-hold' || s === 'onhold' || s === 'hold') return STATUS_CONFIG['onhold'];
+  if (s === 'downtime' || s === 'down' || s === 'error') return STATUS_CONFIG['downtime'];
+  if (s === 'inactive' || s === 'offline' || s === 'stopped') return STATUS_CONFIG['inactive'];
+  return STATUS_CONFIG['active'];
+}
+
+// ─── Machine Card Component ─────────────────────────────────────────
+function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () => void }) {
+  const config = getStatusConfig(machine.status);
+  const metrics = useMemo(() => generateMetrics(machine), [machine]);
+  const StatusIcon = config.icon;
+
+  const oeeColor = metrics.oee >= 85 ? 'text-emerald-600' : metrics.oee >= 70 ? 'text-amber-600' : 'text-red-600';
+  const oeeBarColor = metrics.oee >= 85 ? 'from-emerald-400 to-emerald-600' : metrics.oee >= 70 ? 'from-amber-400 to-amber-600' : 'from-red-400 to-red-600';
 
   return (
-    <div className="space-y-4">
-      {/* Header with Gradient */}
-      <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 rounded-xl p-4 shadow-lg">
-        <h2 className="text-xl font-bold text-white mb-1">Machine Management</h2>
-        <p className="text-blue-100 text-sm">Real-time monitoring and control of all production machines</p>
+    <div
+      onClick={onClick}
+      className={`group relative bg-white rounded-2xl border ${config.border} shadow-sm hover:shadow-xl 
+                transition-all duration-300 cursor-pointer hover:-translate-y-1 overflow-hidden`}
+    >
+      {/* Top accent bar */}
+      <div className={`h-1 w-full bg-gradient-to-r ${config.gradient}`} />
+
+      <div className="p-4">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-bold text-sm text-slate-900 truncate">{machine.name_machine || 'Unknown Machine'}</h3>
+              <div className={`w-2 h-2 rounded-full ${config.dot} animate-pulse shadow-sm`} />
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+              {machine.line_name && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded font-medium">
+                  <Box size={10} />
+                  {machine.line_name}
+                </span>
+              )}
+              {machine.process_name && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-violet-50 text-violet-600 rounded font-medium">
+                  <Settings size={10} />
+                  {machine.process_name}
+                </span>
+              )}
+              {machine.last_maintenance && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 text-slate-600 border border-slate-200 rounded font-medium">
+                  <Clock size={10} />
+                  Last: {new Date(machine.last_maintenance).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                </span>
+              )}
+              {machine.next_maintenance && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-teal-50 text-teal-600 border border-teal-200 rounded font-medium">
+                  <Activity size={10} />
+                  Next: {new Date(machine.next_maintenance).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${config.bg} ${config.color}`}>
+            <StatusIcon size={12} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">{config.label}</span>
+          </div>
+        </div>
+
+        {/* OEE Progress */}
+        <div className="mb-3">
+          <div className="flex justify-between items-baseline mb-1">
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">OEE</span>
+            <span className={`text-xl font-black ${oeeColor}`}>{metrics.oee}%</span>
+          </div>
+          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+            <div
+              className={`h-full rounded-full bg-gradient-to-r ${oeeBarColor} transition-all duration-700`}
+              style={{ width: `${Math.min(metrics.oee, 100)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <MetricCell label="Output" value={metrics.output.toLocaleString('id-ID')} unit="pcs" color="text-blue-600" />
+          <MetricCell label="Throughput" value={metrics.throughput.toString()} unit="/hr" color="text-purple-600" />
+          <MetricCell label="Cycle Time" value={`${metrics.cycleTime}s`} unit="" color="text-teal-600" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <MetricCell label="Quality" value={`${metrics.quality}%`} unit="" color="text-emerald-600" />
+          <MetricCell label="Reject" value={metrics.reject.toString()} unit="pcs" color="text-rose-600" />
+        </div>
+
+
+
+        {/* Footer */}
+        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1" title="Runtime">
+              <Clock size={10} className="text-slate-400" />
+              {formatDurationFromHours(machine.total_running_hours)}
+            </span>
+            <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1" title="Downtime">
+              <AlertTriangle size={10} className="text-rose-400" />
+              {formatDurationFromHours(machine.total_downtime_hours)}
+            </span>
+          </div>
+          <span className="text-[10px] text-indigo-500 font-semibold flex items-center gap-0.5 group-hover:gap-1.5 transition-all">
+            View detail
+            <ChevronRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricCell({ label, value, unit, color }: { label: string; value: string; unit: string; color: string }) {
+  return (
+    <div className="bg-slate-50 rounded-lg p-2 text-center">
+      <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider mb-0.5">{label}</p>
+      <p className={`text-sm font-bold ${color}`}>
+        {value}<span className="text-[9px] font-normal text-slate-400 ml-0.5">{unit}</span>
+      </p>
+    </div>
+  );
+}
+
+// ─── Machine Detail Modal ────────────────────────────────────────────
+function MachineDetailModal({
+  machine,
+  onClose,
+  onStatusChange
+}: {
+  machine: MachineData;
+  onClose: () => void;
+  onStatusChange?: () => void;
+}) {
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (machine.status === newStatus || isUpdating) return;
+
+    setIsUpdating(true);
+    setShowStatusMenu(false);
+    try {
+      const res = await fetch('/api/machines/status-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ machine_id: machine.id, new_status: newStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (onStatusChange) onStatusChange();
+      } else {
+        alert(data.error || 'Gagal mengubah status mesin');
+      }
+    } catch (err) {
+      console.error('Error changing status:', err);
+      alert('Terjadi kesalahan jaringan saat mengubah status.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+  const config = getStatusConfig(machine.status);
+  const metrics = useMemo(() => generateMetrics(machine), [machine]);
+  const StatusIcon = config.icon;
+
+  // Mock hourly data for charts
+  const hours = Array.from({ length: 8 }, (_, i) => `${(7 + i).toString().padStart(2, '0')}:00`);
+  const seedNum = machine.id.charCodeAt(0);
+
+  const outputData = hours.map((_, i) => Math.round(metrics.output / 8 * (0.6 + Math.sin(seedNum + i) * 0.4)));
+  const throughputData = hours.map((_, i) => Math.round(metrics.throughput * (0.7 + Math.cos(seedNum + i) * 0.3)));
+  const cycleTimeData = hours.map((_, i) => +(metrics.cycleTime * (0.85 + Math.sin(seedNum + i * 0.7) * 0.15)).toFixed(1));
+  const qualityData = hours.map((_, i) => +(metrics.quality - Math.abs(Math.sin(seedNum + i)) * 3).toFixed(1));
+  const rejectData = hours.map((_, i) => Math.max(0, Math.round(metrics.reject / 8 * (0.5 + Math.sin(seedNum + i + 1) * 0.5))));
+  const oeeData = hours.map((_, i) => Math.round(metrics.oee * (0.8 + Math.cos(seedNum + i * 0.5) * 0.2)));
+
+  const chartTheme = {
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    titleColor: '#fff',
+    bodyColor: '#e2e8f0',
+    borderColor: 'rgba(99, 102, 241, 0.2)',
+    borderWidth: 1,
+    padding: 10,
+    cornerRadius: 8,
+    titleFont: { size: 11, weight: 'bold' as const },
+    bodyFont: { size: 10 },
+  };
+
+  const makeLineChart = (label: string, data: number[], color: string, fillColor: string) => ({
+    data: {
+      labels: hours,
+      datasets: [{
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: fillColor,
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        pointBackgroundColor: '#fff',
+        pointBorderColor: color,
+        pointBorderWidth: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: chartTheme,
+      },
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+        y: { grid: { color: 'rgba(226,232,240,0.5)' }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+      },
+    },
+  });
+
+  const makeBarChart = (label: string, data: number[], color: string) => ({
+    data: {
+      labels: hours,
+      datasets: [{
+        label,
+        data,
+        backgroundColor: color,
+        borderRadius: 6,
+        borderSkipped: false,
+        hoverBackgroundColor: color.replace('0.7', '1').replace('0.8', '1'),
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: chartTheme,
+      },
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+        y: { grid: { color: 'rgba(226,232,240,0.5)' }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+      },
+    },
+  });
+
+  const outputChart = makeBarChart('Output', outputData, 'rgba(99, 102, 241, 0.8)');
+  const throughputChart = makeLineChart('Throughput', throughputData, '#8b5cf6', 'rgba(139, 92, 246, 0.1)');
+  const cycleTimeChart = makeLineChart('Cycle Time', cycleTimeData, '#14b8a6', 'rgba(20, 184, 166, 0.1)');
+  const qualityChart = makeLineChart('Quality', qualityData, '#10b981', 'rgba(16, 185, 129, 0.1)');
+  const rejectChart = makeBarChart('Reject', rejectData, 'rgba(244, 63, 94, 0.7)');
+  const oeeChart = makeLineChart('OEE', oeeData, '#f59e0b', 'rgba(245, 158, 11, 0.1)');
+
+  const oeeColor = metrics.oee >= 85 ? 'text-emerald-600' : metrics.oee >= 70 ? 'text-amber-600' : 'text-red-600';
+
+  // OEE Doughnut
+  const doughnutData = {
+    labels: ['OEE', 'Remaining'],
+    datasets: [{
+      data: [metrics.oee, 100 - metrics.oee],
+      backgroundColor: [
+        metrics.oee >= 85 ? '#10b981' : metrics.oee >= 70 ? '#f59e0b' : '#ef4444',
+        'rgba(226, 232, 240, 0.3)',
+      ],
+      borderWidth: 0,
+      cutout: '78%',
+    }],
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+      {/* Modal */}
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className={`sticky top-0 z-10 bg-gradient-to-r ${config.gradient} px-6 py-4 rounded-t-2xl`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                <Cpu size={20} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">{machine.name_machine || 'Unknown Machine'}</h2>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  {machine.line_name && (
+                    <span className="text-xs text-white/80 bg-white/15 px-2 py-0.5 rounded-full">{machine.line_name}</span>
+                  )}
+                  {machine.process_name && (
+                    <span className="text-xs text-white/80 bg-white/15 px-2 py-0.5 rounded-full">{machine.process_name}</span>
+                  )}
+                  {machine.last_maintenance && (
+                    <span className="text-xs text-white/80 bg-white/15 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Clock size={10} />
+                      Last Maint: {new Date(machine.last_maintenance).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
+                  {machine.next_maintenance && (
+                    <span className="text-xs text-teal-100 bg-white/15 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                      <Activity size={10} />
+                      Next Maint: {new Date(machine.next_maintenance).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                  )}
+                  <span className="text-xs text-white/90 bg-white/20 px-2 py-0.5 rounded-full flex items-center gap-1 font-bold">
+                    <StatusIcon size={10} />
+                    {config.label}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 relative">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowStatusMenu(!showStatusMenu); }}
+                disabled={isUpdating}
+                className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl transition-colors flex items-center gap-2 text-white text-[11px] font-bold shadow-sm backdrop-blur-sm"
+              >
+                {isUpdating ? <RefreshCw size={14} className="animate-spin text-white" /> : <Settings size={14} className="text-white" />}
+                <span>Ubah Status</span>
+              </button>
+
+              {showStatusMenu && (
+                <div
+                  className="absolute top-full right-8 mt-2 w-40 bg-white rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] border border-slate-100 overflow-hidden z-[100]"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="p-1.5 flex flex-col gap-0.5">
+                    {[
+                      { val: 'active', label: 'Active', icon: Play, color: 'text-emerald-700', bg: 'hover:bg-emerald-50' },
+                      { val: 'maintenance', label: 'Maintenance', icon: Wrench, color: 'text-blue-700', bg: 'hover:bg-blue-50' },
+                      { val: 'on hold', label: 'On Hold', icon: PauseCircle, color: 'text-amber-700', bg: 'hover:bg-amber-50' },
+                      { val: 'downtime', label: 'Downtime', icon: AlertTriangle, color: 'text-rose-700', bg: 'hover:bg-rose-50' },
+                      { val: 'inactive', label: 'Inactive', icon: PowerOff, color: 'text-slate-600', bg: 'hover:bg-slate-50' }
+                    ].map(st => {
+                      const isActive = machine.status?.toLowerCase() === st.val ||
+                        (machine.status?.toLowerCase() === 'running' && st.val === 'active') ||
+                        (machine.status?.toLowerCase() === 'onhold' && st.val === 'on hold') ||
+                        (machine.status?.toLowerCase() === 'down' && st.val === 'downtime');
+
+                      return (
+                        <button
+                          key={st.val}
+                          onClick={() => handleStatusChange(st.val)}
+                          disabled={isActive}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 text-[11px] font-bold rounded-lg transition-colors ${st.bg} ${st.color} ${isActive ? 'bg-slate-50 opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <st.icon size={13} className={isActive ? 'opacity-50' : ''} />
+                          {st.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={onClose} className="p-2 bg-white/15 hover:bg-white/25 rounded-xl transition-colors backdrop-blur-sm">
+                <X size={18} className="text-white" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Quick Stats Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+            <QuickStat icon={<Gauge size={14} />} label="OEE" value={`${metrics.oee}%`} color={oeeColor} />
+            <QuickStat icon={<BarChart3 size={14} />} label="Output" value={metrics.output.toLocaleString('id-ID')} color="text-indigo-600" />
+            <QuickStat icon={<Zap size={14} />} label="Throughput" value={`${metrics.throughput}/hr`} color="text-purple-600" />
+            <QuickStat icon={<Clock size={14} />} label="Cycle Time" value={`${metrics.cycleTime}s`} color="text-teal-600" />
+            <QuickStat icon={<Shield size={14} />} label="Quality" value={`${metrics.quality}%`} color="text-emerald-600" />
+            <QuickStat icon={<AlertTriangle size={14} />} label="Reject" value={metrics.reject.toString()} color="text-rose-600" />
+            <QuickStat icon={<Activity size={14} />} label="Runtime" value={formatDurationFromHours(machine.total_running_hours)} color="text-slate-600" />
+            <QuickStat icon={<AlertTriangle size={14} />} label="Downtime" value={formatDurationFromHours(machine.total_downtime_hours)} color="text-rose-500" />
+          </div>
+
+          {/* OEE Overview */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 p-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">OEE Overview</h3>
+              <div className="flex items-center justify-center">
+                <div className="relative w-32 h-32">
+                  <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false }, tooltip: { enabled: false } } }} />
+                  <div className="absolute inset-0 flex items-center justify-center flex-col">
+                    <span className={`text-2xl font-black ${oeeColor}`}>{metrics.oee}%</span>
+                    <span className="text-[9px] text-slate-400 font-semibold">OEE</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Target Output</span>
+                  <span className="font-bold text-slate-700">{metrics.targetOutput.toLocaleString('id-ID')}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500">Actual Output</span>
+                  <span className="font-bold text-indigo-600">{metrics.output.toLocaleString('id-ID')}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* OEE Trend */}
+            <div className="lg:col-span-2 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 p-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">OEE Trend</h3>
+              <div className="h-40">
+                <Line data={oeeChart.data} options={oeeChart.options as any} />
+              </div>
+            </div>
+          </div>
+
+          {/* Charts Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <ChartCard title="Output" subtitle="Production volume per hour" color="indigo">
+              <Bar data={outputChart.data} options={outputChart.options as any} />
+            </ChartCard>
+
+            <ChartCard title="Throughput" subtitle="Units per hour" color="purple">
+              <Line data={throughputChart.data} options={throughputChart.options as any} />
+            </ChartCard>
+
+            <ChartCard title="Cycle Time" subtitle="Seconds per cycle" color="teal">
+              <Line data={cycleTimeChart.data} options={cycleTimeChart.options as any} />
+            </ChartCard>
+
+            <ChartCard title="Quality Rate" subtitle="Pass percentage" color="emerald">
+              <Line data={qualityChart.data} options={qualityChart.options as any} />
+            </ChartCard>
+
+            <ChartCard title="Reject Count" subtitle="Rejected items per hour" color="rose">
+              <Bar data={rejectChart.data} options={rejectChart.options as any} />
+            </ChartCard>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickStat({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string; color: string }) {
+  return (
+    <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100 hover:border-slate-200 transition-colors">
+      <div className={`flex items-center justify-center mb-1 ${color}`}>{icon}</div>
+      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{label}</p>
+      <p className={`text-base font-black ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function ChartCard({ title, subtitle, color, children }: { title: string; subtitle: string; color: string; children: React.ReactNode }) {
+  const colorMap: Record<string, string> = {
+    indigo: 'from-indigo-500 to-indigo-600',
+    purple: 'from-purple-500 to-violet-600',
+    teal: 'from-teal-500 to-teal-600',
+    emerald: 'from-emerald-500 to-green-600',
+    rose: 'from-rose-500 to-red-600',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+      <div className="p-3 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <div className={`w-1.5 h-5 rounded-full bg-gradient-to-b ${colorMap[color] || colorMap.indigo}`} />
+          <div>
+            <h4 className="text-xs font-bold text-slate-800">{title}</h4>
+            <p className="text-[9px] text-slate-400">{subtitle}</p>
+          </div>
+        </div>
+      </div>
+      <div className="p-3 h-40">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────
+export default function MachineManagement() {
+  const [machines, setMachines] = useState<MachineData[]>([]);
+  const [lines, setLines] = useState<LineOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterLine, setFilterLine] = useState('all');
+  const [selectedMachine, setSelectedMachine] = useState<MachineData | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // Fetch machines
+  const fetchMachines = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filterLine !== 'all') params.set('lineId', filterLine);
+      if (filterStatus !== 'all') params.set('status', filterStatus);
+
+      const res = await fetch(`/api/machines/with-details?${params.toString()}`);
+      const json = await res.json();
+      if (json.success) {
+        setMachines(json.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching machines:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [filterLine, filterStatus]);
+
+  // Fetch lines for filter
+  const fetchLines = useCallback(async () => {
+    try {
+      const res = await fetch('/api/lines');
+      const json = await res.json();
+      if (json.success) {
+        setLines(json.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching lines:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLines();
+  }, [fetchLines]);
+
+  useEffect(() => {
+    // Tampilkan loading skeleton HANYA saat pertama kali fetch atau saat filter berubah awal
+    setLoading(true);
+    fetchMachines();
+
+    // Auto-refresh data tiap 5 detik (Real-time polling)
+    const interval = setInterval(() => {
+      fetchMachines();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [fetchMachines]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchMachines();
+  };
+
+  // Filter by search
+  const filteredMachines = useMemo(() => {
+    return machines.filter(m => {
+      const term = searchTerm.toLowerCase();
+      const matchesSearch = !term ||
+        (m.name_machine || '').toLowerCase().includes(term) ||
+        (m.line_name || '').toLowerCase().includes(term) ||
+        (m.process_name || '').toLowerCase().includes(term);
+      return matchesSearch;
+    });
+  }, [machines, searchTerm]);
+
+  // Group machines by line
+  const groupedByLine = useMemo(() => {
+    const groups: { lineName: string; lineId: string | null; machines: MachineData[] }[] = [];
+    const lineMap = new Map<string, MachineData[]>();
+    const lineOrder: string[] = [];
+
+    filteredMachines.forEach(m => {
+      const key = m.line_name || '__unassigned__';
+      if (!lineMap.has(key)) {
+        lineMap.set(key, []);
+        lineOrder.push(key);
+      }
+      lineMap.get(key)!.push(m);
+    });
+
+    // Sort: named lines alphabetically, unassigned at end
+    lineOrder.sort((a, b) => {
+      if (a === '__unassigned__') return 1;
+      if (b === '__unassigned__') return -1;
+      return a.localeCompare(b);
+    });
+
+    lineOrder.forEach(key => {
+      const machs = lineMap.get(key)!;
+      // Sort machines within line by process_order
+      machs.sort((a, b) => (a.process_order || 0) - (b.process_order || 0));
+      groups.push({
+        lineName: key === '__unassigned__' ? 'Unassigned' : key,
+        lineId: machs[0]?.line_id || null,
+        machines: machs,
+      });
+    });
+
+    return groups;
+  }, [filteredMachines]);
+
+  // Status counts (5 statuses)
+  const statusCounts = useMemo(() => {
+    const counts = { active: 0, maintenance: 0, onhold: 0, downtime: 0, inactive: 0, total: 0 };
+    machines.forEach(m => {
+      const s = m.status?.toLowerCase() || '';
+      if (s === 'active' || s === 'running') counts.active++;
+      else if (s === 'maintenance') counts.maintenance++;
+      else if (s === 'on hold' || s === 'on-hold' || s === 'onhold' || s === 'hold') counts.onhold++;
+      else if (s === 'downtime' || s === 'down' || s === 'error') counts.downtime++;
+      else if (s === 'inactive' || s === 'offline' || s === 'stopped') counts.inactive++;
+      else counts.active++; // default
+      counts.total++;
+    });
+    return counts;
+  }, [machines]);
+
+  return (
+    <div className="space-y-6">
+      {/* ── Page Header (matches admin style) ── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Cpu className="text-indigo-600" />
+            Machine Management
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Real-time monitoring dan kontrol seluruh mesin produksi.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-bold transition-colors shadow-sm shadow-indigo-600/20"
+          >
+            <Plus size={14} />
+            Tambah Mesin
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl text-[13px] font-bold transition-colors"
+          >
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            Refresh Data
+          </button>
+        </div>
       </div>
 
-      {/* Stats Cards - Modern Design */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-lg p-3 border border-green-200 shadow-md hover:shadow-lg transition-all group">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-1.5 bg-green-100 rounded-md group-hover:scale-110 transition-transform">
-              <CheckCircle className="text-green-600" size={18} />
+      {/* ── Status Cards (5 columns: total + 4 status) ── */}
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+          {/* Total Machine Card */}
+          <button
+            onClick={() => setFilterStatus('all')}
+            className={`text-left rounded-2xl p-3.5 border transition-all ${filterStatus === 'all'
+              ? 'bg-indigo-50 border-indigo-300 ring-2 ring-offset-1 ring-indigo-400'
+              : 'bg-slate-50 border-slate-200 hover:border-indigo-300 hover:shadow-md'
+              }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
+                <Cpu size={14} className="text-white" />
+              </div>
+              {filterStatus === 'all' && (
+                <span className="text-[9px] font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded">ALL</span>
+              )}
             </div>
-            <TrendingUp className="text-green-500" size={16} />
-          </div>
-          <p className="text-xs font-medium text-gray-600 mb-0.5">Running</p>
-          <p className="text-2xl font-bold text-green-600">{statusCounts.running || 0}</p>
-          <p className="text-xs text-gray-500 mt-1">Operating normally</p>
-        </div>
+            <p className="text-2xl font-black text-slate-900">{statusCounts.total}</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total Mesin</p>
+            <p className="text-[9px] text-slate-400 mt-0.5">Semua mesin terdaftar</p>
+          </button>
 
-        <div className="bg-white rounded-lg p-3 border border-yellow-200 shadow-md hover:shadow-lg transition-all group">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-1.5 bg-yellow-100 rounded-md group-hover:scale-110 transition-transform">
-              <AlertTriangle className="text-yellow-600" size={18} />
-            </div>
-            <Zap className="text-yellow-500" size={16} />
-          </div>
-          <p className="text-xs font-medium text-gray-600 mb-0.5">Warning</p>
-          <p className="text-2xl font-bold text-yellow-600">{statusCounts.warning || 0}</p>
-          <p className="text-xs text-gray-500 mt-1">Needs attention</p>
-        </div>
-
-        <div className="bg-white rounded-lg p-3 border border-red-200 shadow-md hover:shadow-lg transition-all group">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-1.5 bg-red-100 rounded-md group-hover:scale-110 transition-transform">
-              <AlertTriangle className="text-red-600" size={18} />
-            </div>
-            <TrendingDown className="text-red-500" size={16} />
-          </div>
-          <p className="text-xs font-medium text-gray-600 mb-0.5">Downtime</p>
-          <p className="text-2xl font-bold text-red-600">{statusCounts.downtime || 0}</p>
-          <p className="text-xs text-gray-500 mt-1">Not operational</p>
-        </div>
-
-        <div className="bg-white rounded-lg p-3 border border-blue-200 shadow-md hover:shadow-lg transition-all group">
-          <div className="flex items-center justify-between mb-2">
-            <div className="p-1.5 bg-blue-100 rounded-md group-hover:scale-110 transition-transform">
-              <Wrench className="text-blue-600" size={18} />
-            </div>
-            <Activity className="text-blue-500" size={16} />
-          </div>
-          <p className="text-xs font-medium text-gray-600 mb-0.5">Maintenance</p>
-          <p className="text-2xl font-bold text-blue-600">{statusCounts.maintenance || 0}</p>
-          <p className="text-xs text-gray-500 mt-1">Under service</p>
+          {/* 5 Status filter cards */}
+          {[
+            { key: 'active', label: 'Active', count: statusCounts.active, desc: 'Sedang beroperasi', icon: Play, gradient: 'from-emerald-500 to-emerald-600' },
+            { key: 'maintenance', label: 'Maintenance', count: statusCounts.maintenance, desc: 'Perawatan terjadwal', icon: Wrench, gradient: 'from-blue-500 to-blue-600' },
+            { key: 'onhold', label: 'On Hold', count: statusCounts.onhold, desc: 'Ditahan sementara', icon: PauseCircle, gradient: 'from-amber-500 to-amber-600' },
+            { key: 'downtime', label: 'Downtime', count: statusCounts.downtime, desc: 'Berhenti/kerusakan', icon: AlertTriangle, gradient: 'from-rose-500 to-rose-600' },
+            { key: 'inactive', label: 'Inactive', count: statusCounts.inactive, desc: 'Tidak aktif', icon: PowerOff, gradient: 'from-slate-400 to-slate-500' },
+          ].map(s => (
+            <button
+              key={s.key}
+              onClick={() => setFilterStatus(filterStatus === s.key ? 'all' : s.key)}
+              className={`text-left rounded-2xl p-3.5 border transition-all ${bgHoverEffect(s.key, filterStatus)} ${filterStatus === s.key ? 'ring-2 ring-offset-1 ring-indigo-400' : 'hover:shadow-md'}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className={`p-1.5 rounded-lg bg-gradient-to-br ${s.gradient}`}>
+                  <s.icon size={14} className="text-white" />
+                </div>
+                {filterStatus === s.key && (
+                  <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">FILTER</span>
+                )}
+              </div>
+              <p className="text-2xl font-black text-slate-900">{s.count}</p>
+              <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{s.label}</p>
+              <p className="text-[9px] text-slate-400 mt-0.5">{s.desc}</p>
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Enhanced Filters */}
-      <div className="bg-white rounded-lg shadow-md p-3 border border-gray-200">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+      {/* ── Filters (matches admin card style) ── */}
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+            <Search size={16} className="text-indigo-500" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Daftar Mesin</h2>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {filteredMachines.length} dari {statusCounts.total} mesin ditampilkan
+            </p>
+          </div>
+        </div>
+
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-3">
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200/60 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition-all min-w-[250px]">
+            <Search size={14} className="text-slate-400 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Search by machine name or ID..."
+              placeholder="Cari mesin, line, process..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="flex-1 bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-400 outline-none"
             />
           </div>
 
           <select
+            value={filterLine}
+            onChange={(e) => setFilterLine(e.target.value)}
+            className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
+          >
+            <option value="all">Semua Line</option>
+            {lines.map(line => (
+              <option key={line.id} value={line.id}>{line.name}</option>
+            ))}
+          </select>
+
+          <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium cursor-pointer transition-all"
+            className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
           >
-            <option value="all">All Status</option>
-            <option value="running">Running</option>
-            <option value="warning">Warning</option>
-            <option value="downtime">Downtime</option>
+            <option value="all">Semua Status</option>
+            <option value="active">Active</option>
             <option value="maintenance">Maintenance</option>
+            <option value="onhold">On Hold</option>
+            <option value="downtime">Downtime</option>
+            <option value="inactive">Inactive</option>
           </select>
         </div>
       </div>
 
-      {/* Machine Grid - Enhanced Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredMachines.map((machine) => (
-          <div
-            key={machine.id}
-            onClick={() => setSelectedMachine(machine)}
-            className={`bg-white rounded-xl shadow-md border p-4 cursor-pointer hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 ${getCardBorderStyle(machine.status)}`}
-          >
-            {/* Header with Status Badge */}
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <h3 className="font-bold text-sm text-gray-900">{machine.name}</h3>
-                  <div className={`w-2.5 h-2.5 rounded-full animate-pulse shadow-md ${getStatusStyle(machine.status)}`}></div>
+      {/* Machine Grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 animate-pulse">
+              <div className="h-1 w-full bg-slate-200 rounded-full mb-4" />
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <div className="h-4 bg-slate-200 rounded w-2/3 mb-2" />
+                  <div className="h-3 bg-slate-100 rounded w-1/2" />
                 </div>
-                <p className="text-xs text-gray-500 flex items-center gap-1">
-                  <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{machine.id}</span>
-                  <span>•</span>
-                  <span>{machine.location}</span>
-                </p>
+                <div className="h-6 w-16 bg-slate-200 rounded-lg" />
               </div>
-              <div className={`p-1.5 rounded-md ${machine.status === 'running' ? 'bg-green-100 text-green-600' : machine.status === 'warning' ? 'bg-yellow-100 text-yellow-600' : machine.status === 'downtime' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
-                {getStatusIcon(machine.status)}
+              <div className="h-2 bg-slate-200 rounded-full mb-3" />
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[1, 2, 3].map(j => <div key={j} className="h-14 bg-slate-100 rounded-lg" />)}
               </div>
-            </div>
-
-            {/* OEE Progress */}
-            <div className="mb-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-xs font-semibold text-gray-700">Overall OEE</span>
-                <span className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  {machine.metrics.oee}%
-                </span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div
-                  className={`h-2 rounded-full transition-all duration-500 ${machine.metrics.oee >= 85 ? 'bg-gradient-to-r from-green-500 to-green-600' :
-                      machine.metrics.oee >= 70 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
-                        'bg-gradient-to-r from-red-500 to-red-600'
-                    }`}
-                  style={{ width: `${machine.metrics.oee}%` }}
-                ></div>
+              <div className="grid grid-cols-2 gap-2">
+                {[1, 2].map(j => <div key={j} className="h-14 bg-slate-100 rounded-lg" />)}
               </div>
             </div>
+          ))}
+        </div>
+      ) : filteredMachines.length > 0 ? (
+        <div className="space-y-6">
+          {groupedByLine.map((group) => {
+            // Count per status in this line group
+            const lineActive = group.machines.filter(m => { const st = m.status?.toLowerCase() || ''; return st === 'active' || st === 'running'; }).length;
+            const lineMaint = group.machines.filter(m => m.status?.toLowerCase() === 'maintenance').length;
+            const lineHold = group.machines.filter(m => { const st = m.status?.toLowerCase() || ''; return ['on hold', 'on-hold', 'onhold', 'hold'].includes(st); }).length;
+            const lineDown = group.machines.filter(m => { const st = m.status?.toLowerCase() || ''; return ['downtime', 'down', 'error'].includes(st); }).length;
+            const lineInactive = group.machines.filter(m => { const st = m.status?.toLowerCase() || ''; return ['inactive', 'offline', 'stopped'].includes(st); }).length;
 
-            {/* Key Metrics Grid */}
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-md p-2 border border-blue-200">
-                <p className="text-xs text-gray-600">Output</p>
-                <p className="text-base font-bold text-blue-700">
-                  {(machine.metrics.actualOutput / 1000).toFixed(1)}k
-                </p>
-                <p className="text-xs text-gray-500">
-                  of {(machine.metrics.targetOutput / 1000).toFixed(1)}k
-                </p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-md p-2 border border-purple-200">
-                <p className="text-xs text-gray-600">Throughput</p>
-                <p className="text-base font-bold text-purple-700">
-                  {machine.metrics.throughput}
-                </p>
-                <p className="text-xs text-gray-500">units/hour</p>
-              </div>
-            </div>
+            return (
+              <div key={group.lineName} className="space-y-3">
+                {/* Line Section Header */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2 rounded-xl shadow-md shadow-indigo-500/20">
+                    <Box size={15} />
+                    <span className="text-sm font-bold tracking-wide">{group.lineName}</span>
+                  </div>
+                  <div className="flex-1 h-px bg-gradient-to-r from-indigo-200 via-slate-200 to-transparent" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 font-medium">{group.machines.length} machine{group.machines.length !== 1 ? 's' : ''}</span>
+                    <div className="flex items-center gap-1">
+                      {lineActive > 0 && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold border border-emerald-200">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          {lineActive}
+                        </span>
+                      )}
+                      {lineMaint > 0 && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold border border-blue-200">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          {lineMaint}
+                        </span>
+                      )}
+                      {lineHold > 0 && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px] font-bold border border-amber-200">
+                          <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          {lineHold}
+                        </span>
+                      )}
+                      {lineDown > 0 && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-rose-50 text-rose-600 rounded text-[10px] font-bold border border-rose-200">
+                          <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                          {lineDown}
+                        </span>
+                      )}
+                      {lineInactive > 0 && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded text-[10px] font-bold border border-slate-200">
+                          <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                          {lineInactive}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
-            {/* Performance Indicators */}
-            <div className="grid grid-cols-3 gap-2 mb-3">
-              <div className="text-center">
-                <p className="text-xs text-gray-500">Cycle</p>
-                <p className={`text-xs font-bold ${machine.metrics.cycleTime > machine.metrics.targetCycleTime * 1.1 ? 'text-red-600' : 'text-green-600'
-                  }`}>
-                  {machine.metrics.cycleTime}s
-                </p>
+                {/* Machine Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {group.machines.map((machine) => (
+                    <MachineCard
+                      key={machine.id}
+                      machine={machine}
+                      onClick={() => setSelectedMachine(machine)}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="text-center border-x border-gray-200">
-                <p className="text-xs text-gray-500">Quality</p>
-                <p className="text-xs font-bold text-green-600">{machine.metrics.quality}%</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-gray-500">Reject</p>
-                <p className="text-xs font-bold text-red-600">{machine.metrics.reject}</p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="pt-2 border-t border-gray-200 flex items-center justify-between text-xs">
-              <span className="text-gray-600 flex items-center gap-1">
-                <Activity size={10} />
-                {machine.totalRunningHours}h runtime
-              </span>
-              <span className="text-blue-600 font-medium">
-                PM: {new Date(machine.nextMaintenance).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {filteredMachines.length === 0 && (
-        <div className="text-center py-16 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
-          <Activity className="mx-auto text-gray-400 mb-4" size={48} />
-          <p className="text-gray-500 text-lg font-medium">No machines found</p>
-          <p className="text-gray-400 text-sm mt-2">Try adjusting your search or filter</p>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-16 bg-gradient-to-br from-slate-50 to-white rounded-2xl border-2 border-dashed border-slate-200">
+          <Cpu className="mx-auto text-slate-300 mb-3" size={48} />
+          <p className="text-slate-500 text-base font-semibold">No machines found</p>
+          <p className="text-slate-400 text-sm mt-1">Try adjusting your search or filters</p>
         </div>
       )}
 
-      {/* Machine Detail Modal */}
+      {/* Detail Modal */}
       {selectedMachine && (
-        <MachineDetail
+        <MachineDetailModal
           machine={selectedMachine}
           onClose={() => setSelectedMachine(null)}
+          onStatusChange={() => {
+            // Re-fetch to update the parent list
+            handleRefresh();
+          }}
         />
       )}
+
+      {/* Add Machine Modal */}
+      <AddMachineModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        lines={lines}
+        onSuccess={() => {
+          handleRefresh(); // Refresh data after adding
+        }}
+      />
     </div>
   );
+}
+
+function bgHoverEffect(key: string, current: string) {
+  if (current === key) return 'border-indigo-300 bg-indigo-50/50';
+  const map: Record<string, string> = {
+    active: 'border-slate-200 hover:border-emerald-300',
+    maintenance: 'border-slate-200 hover:border-blue-300',
+    onhold: 'border-slate-200 hover:border-amber-300',
+    downtime: 'border-slate-200 hover:border-rose-300',
+    inactive: 'border-slate-200 hover:border-slate-300',
+  };
+  return map[key] || 'border-slate-200';
 }

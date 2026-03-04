@@ -5,33 +5,36 @@ import prisma from '@/lib/prisma'
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams
-        const lineId = searchParams.get('lineId') || searchParams.get('line_id')
-        const shiftNumber = searchParams.get('shiftNumber') || searchParams.get('shift_number')
-        const date = searchParams.get('date')
-        const pn = searchParams.get('pn')
+        const dataItemId = searchParams.get('dataItemId') || searchParams.get('data_item_id')
 
         const where: any = {}
-        if (lineId) where.lineId = lineId
-        if (shiftNumber) where.shiftNumber = parseInt(shiftNumber)
-        if (date) where.date = new Date(date)
-        if (pn) where.pn = pn
+        if (dataItemId) where.dataItemId = dataItemId
 
         const actualOutputs = await prisma.actualOutput.findMany({
             where,
+            include: {
+                dataItem: {
+                    include: {
+                        snRelation: true,
+                        lineProcess: {
+                            include: {
+                                line: true,
+                                process: true,
+                            },
+                        },
+                    },
+                },
+            },
             orderBy: { createdAt: 'desc' },
         })
 
-        // Convert BigInt to string for JSON serialization
         const serializedOutputs = actualOutputs.map(output => ({
-            id: output.id.toString(),
-            line_id: output.lineId,
-            shift_number: output.shiftNumber,
+            id: output.id,
             hour_slot: output.hourSlot,
-            output: output.output ? Number(output.output) : 0,
-            reject: output.reject ? Number(output.reject) : 0,
+            output: output.output,
             target_output: output.targetOutput ? Number(output.targetOutput) : 0,
-            date: output.date?.toISOString(),
-            pn: output.pn,
+            data_item_id: output.dataItemId,
+            data_item: output.dataItem,
             created_at: output.createdAt?.toISOString(),
             updated_at: output.updatedAt?.toISOString(),
         }))
@@ -55,22 +58,25 @@ export async function POST(request: NextRequest) {
         const body = await request.json()
 
         const actualOutput = await prisma.actualOutput.create({
-            data: body,
+            data: {
+                id: body.id || crypto.randomUUID(),
+                hourSlot: body.hour_slot || body.hourSlot,
+                output: body.output,
+                targetOutput: body.target_output || body.targetOutput || 1000,
+                dataItemId: body.data_item_id || body.dataItemId,
+            },
         })
 
-        // Convert BigInt to string
-        const serialized = {
-            ...actualOutput,
-            id: actualOutput.id.toString(),
-            output: actualOutput.output?.toString(),
-            reject: actualOutput.reject?.toString(),
-            targetOutput: actualOutput.targetOutput?.toString(),
-        }
-
-        return NextResponse.json(serialized, { status: 201 })
+        return NextResponse.json({
+            success: true,
+            data: {
+                ...actualOutput,
+                targetOutput: actualOutput.targetOutput?.toString(),
+            }
+        }, { status: 201 })
     } catch (error) {
         console.error('Error creating actual output:', error)
-        return NextResponse.json({ error: 'Failed to create actual output' }, { status: 500 })
+        return NextResponse.json({ success: false, error: 'Failed to create actual output' }, { status: 500 })
     }
 }
 
@@ -78,30 +84,33 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
     try {
         const body = await request.json()
-        const { id, ...data } = body
+        const { id, ...rest } = body
 
         if (!id) {
-            return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+            return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 })
         }
+
+        const updateData: any = {}
+        if (rest.hour_slot || rest.hourSlot) updateData.hourSlot = rest.hour_slot || rest.hourSlot
+        if (rest.output !== undefined) updateData.output = rest.output
+        if (rest.target_output || rest.targetOutput) updateData.targetOutput = rest.target_output || rest.targetOutput
+        if (rest.data_item_id || rest.dataItemId) updateData.dataItemId = rest.data_item_id || rest.dataItemId
 
         const actualOutput = await prisma.actualOutput.update({
-            where: { id: BigInt(id) },
-            data,
+            where: { id },
+            data: updateData,
         })
 
-        // Convert BigInt to string
-        const serialized = {
-            ...actualOutput,
-            id: actualOutput.id.toString(),
-            output: actualOutput.output?.toString(),
-            reject: actualOutput.reject?.toString(),
-            targetOutput: actualOutput.targetOutput?.toString(),
-        }
-
-        return NextResponse.json(serialized)
+        return NextResponse.json({
+            success: true,
+            data: {
+                ...actualOutput,
+                targetOutput: actualOutput.targetOutput?.toString(),
+            }
+        })
     } catch (error) {
         console.error('Error updating actual output:', error)
-        return NextResponse.json({ error: 'Failed to update actual output' }, { status: 500 })
+        return NextResponse.json({ success: false, error: 'Failed to update actual output' }, { status: 500 })
     }
 }
 
@@ -112,16 +121,16 @@ export async function DELETE(request: NextRequest) {
         const id = searchParams.get('id')
 
         if (!id) {
-            return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+            return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 })
         }
 
         await prisma.actualOutput.delete({
-            where: { id: BigInt(id) },
+            where: { id },
         })
 
-        return NextResponse.json({ message: 'Actual output deleted successfully' })
+        return NextResponse.json({ success: true, message: 'Actual output deleted successfully' })
     } catch (error) {
         console.error('Error deleting actual output:', error)
-        return NextResponse.json({ error: 'Failed to delete actual output' }, { status: 500 })
+        return NextResponse.json({ success: false, error: 'Failed to delete actual output' }, { status: 500 })
     }
 }

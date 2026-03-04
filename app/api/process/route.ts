@@ -3,10 +3,37 @@ import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 
 /**
  * GET /api/process
- * Mengambil semua master data process
+ * Mengambil master data process (bisa difilter by lineId)
  */
 export async function GET(request: NextRequest) {
     try {
+        const searchParams = request.nextUrl.searchParams;
+        const lineId = searchParams.get('lineId');
+
+        if (lineId) {
+            // Get processes specific to a line
+            const { data, error } = await supabaseAdmin
+                .from('line_process')
+                .select(`
+                    process_order,
+                    process:process_id ( id, name, index )
+                `)
+                .eq('line_id', lineId)
+                .order('process_order', { ascending: true });
+
+            if (error) {
+                return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+            }
+
+            // Extract the nested process objects
+            const processes = data
+                .map((item: any) => item.process)
+                .filter(Boolean);
+
+            return NextResponse.json({ success: true, data: processes });
+        }
+
+        // Get all processes
         const { data: processes, error } = await supabaseAdmin
             .from('process')
             .select('*')

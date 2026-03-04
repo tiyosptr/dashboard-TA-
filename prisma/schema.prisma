@@ -12,113 +12,46 @@ datasource db {
 }
 
 model ActualOutput {
-  id            BigInt   @id @default(autoincrement())
-  lineId        String?  @map("line_id") @db.Uuid
-  shiftNumber   Int?     @default(1) @map("shift_number")
-  hourSlot      String?  @map("hour_slot")
-  output        Decimal? @default(0) @db.Decimal
-  reject        Decimal? @default(0) @db.Decimal
-  targetOutput  Decimal? @default(1000) @map("target_output") @db.Decimal
-  date          DateTime? @default(now()) @db.Date
-  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  pn            String?
+  id           String   @id @db.Uuid
+  hourSlot     String?  @map("hour_slot")
+  output       String?
+  targetOutput Decimal? @default(1000) @map("target_output") @db.Decimal
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  dataItemId   String?  @map("data_item_id") @db.Uuid
 
-  @@unique([lineId, shiftNumber, hourSlot, date, pn], name: "actual_output_line_id_shift_number_hour_slot_date_pn_key")
-  @@index([pn], name: "idx_actual_output_pn")
-  @@index([lineId, shiftNumber, date], name: "idx_actual_output_line_shift")
-  @@index([hourSlot], name: "idx_actual_output_hour")
+  dataItem DataItem? @relation(fields: [dataItemId], references: [id])
+
   @@map("actual_output")
 }
 
 model DataItem {
-  sn          String    @id
-  id          BigInt?
-  pn          String?
-  wo          String?
-  nameLine    String?   @map("name_line")
-  processId   String?   @default(dbgenerated("gen_random_uuid()")) @map("process_id") @db.Uuid
-  lineId      String?   @map("line_id") @db.Uuid
-  nameProcess String?   @map("name_process")
-  status      String?
-  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id             String    @id @db.Uuid
+  sn             String    @db.Uuid
+  status         String?
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  lineProcessId  String?   @map("line_process_id") @db.Uuid
 
-  @@index([pn], name: "idx_data_items_pn")
+  snRelation     Sn?           @relation(fields: [sn], references: [id])
+  lineProcess    LineProcess?  @relation(fields: [lineProcessId], references: [id])
+  actualOutputs  ActualOutput[]
+
   @@map("data_items")
 }
 
 model Line {
-  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name               String?
-  status             String?
-  totalRunningHours  Decimal? @map("total_running_hours") @db.Decimal
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String?
+  status            String?
+  totalRunningHours Decimal?  @map("total_running_hours") @db.Decimal
+  lastActiveAt      DateTime? @map("last_active_at") @db.Timestamptz(6)
 
   lineProcesses LineProcess[]
   workOrders    WorkOrder[]
+  partNumbers   Pn[]
 
   @@map("line")
-}
-
-model Machine {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nameMachine        String?   @map("name_machine")
-  status             String?
-  nextMaintenance    DateTime? @map("next_maintenance") @db.Timestamp(6)
-  lastMaintenance    DateTime? @map("last_maintenance") @db.Timestamp(6)
-  totalRunningHours  String?   @map("total_running_hours")
-
-  processes     Process[]
-  notifications Notification[]
-  workOrders    WorkOrder[]
-
-  @@map("machine")
-}
-
-model Note {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workOrderId  String?   @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
-  text         String?
-  author       String?
-  timestamp    DateTime? @db.Timestamp(6)
-
-  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
-
-  @@map("note")
-}
-
-model Notification {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  type            String?
-  severity        String?
-  machineId       String?   @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
-  machineName     String?   @map("machine_name")
-  messages        String?
-  read            String?
-  acknowladged    String?
-  acknowladgedBy  String?   @map("acknowladged_by")
-  acknowladgedAt  DateTime? @map("acknowladged_at") @db.Timestamp(6)
-  duration        String?
-  startAt         DateTime? @map("start_at") @db.Timestamp(6)
-  doneAt          DateTime? @map("done_at") @db.Timestamp(6)
-  processId       String?   @map("process_id") @db.Uuid
-  workOrderId     String?   @map("work_order_id") @db.Uuid
-
-  machine Machine? @relation(fields: [machineId], references: [id])
-
-  @@map("notification")
-}
-
-model Process {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String?
-  index     Decimal? @db.Decimal
-  machineId String?  @map("machine_id") @db.Uuid
-
-  machine       Machine?      @relation(fields: [machineId], references: [id])
-  lineProcesses LineProcess[]
-
-  @@map("process")
 }
 
 model LineProcess {
@@ -128,19 +61,134 @@ model LineProcess {
   processOrder Int?      @map("process_order")
   createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
 
-  line    Line    @relation(fields: [lineId], references: [id], onDelete: Cascade)
-  process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  line      Line       @relation(fields: [lineId], references: [id])
+  process   Process    @relation(fields: [processId], references: [id])
+  dataItems DataItem[]
 
-  @@unique([lineId, processId], name: "unique_line_process")
   @@map("line_process")
 }
 
+model Machine {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nameMachine       String?   @map("name_machine")
+  status            String?
+  nextMaintenance   DateTime? @map("next_maintenance") @db.Timestamp(6)
+  lastMaintenance   DateTime? @map("last_maintenance") @db.Timestamp(6)
+  totalRunningHours String?   @map("total_running_hours")
+  totalDowntimeHours String?   @map("total_downtime_hours")
+
+  processes      Process[]
+  notifications  Notification[]
+  workOrders     WorkOrder[]
+  statusLogs     MachineStatusLog[]
+
+  @@map("machine")
+}
+
+model MachineStatusLog {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  machineId       String    @map("machine_id") @db.Uuid
+  status          String
+  startTime       DateTime  @default(now()) @map("start_time") @db.Timestamptz(6)
+  endTime         DateTime? @map("end_time") @db.Timestamptz(6)
+  durationSeconds BigInt?   @map("duration_seconds")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@index([machineId], name: "idx_msl_machine_open")
+  @@map("machine_status_log")
+}
+
+model Note {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workOrderId String?   @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
+  text        String?
+  author      String?
+  timestamp   DateTime? @db.Timestamp(6)
+
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@map("note")
+}
+
+model Notification {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type           String?
+  severity       String?
+  machineId      String?   @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
+  machineName    String?   @map("machine_name")
+  messages       String?
+  read           String?
+  acknowladged   String?
+  acknowladgedBy String?   @map("acknowladged_by")
+  acknowladgedAt DateTime? @map("acknowladged_at") @db.Timestamp(6)
+  duration       String?
+  startAt        DateTime? @map("start_at") @db.Timestamp(6)
+  doneAt         DateTime? @map("done_at") @db.Timestamp(6)
+  processId      String?   @map("process_id") @db.Uuid
+  workOrderId    String?   @map("work_order_id") @db.Uuid
+
+  machine   Machine?   @relation(fields: [machineId], references: [id])
+  process   Process?   @relation(fields: [processId], references: [id])
+  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+
+  @@map("notification")
+}
+
+model Pn {
+  id         String   @id @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  partNumber String?  @map("part_number") @db.VarChar
+  lineId     String?  @map("line_id") @db.Uuid
+
+  line          Line?  @relation(fields: [lineId], references: [id])
+  serialNumbers Sn[]
+
+  @@map("pn")
+}
+
+model Process {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String?
+  index     Decimal? @db.Decimal
+  machineId String?  @map("machine_id") @db.Uuid
+
+  machine       Machine?       @relation(fields: [machineId], references: [id])
+  lineProcesses LineProcess[]
+  notifications Notification[]
+
+  @@map("process")
+}
+
+model Shift {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftName String   @map("shift_name") @db.VarChar
+  startTime DateTime @map("start_time") @db.Time(6)
+  endTime   DateTime @map("end_time") @db.Time(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("shift")
+}
+
+model Sn {
+  id            String   @id @db.Uuid
+  partNumberId  String?  @map("part_number_id") @db.Uuid
+  serialNumber  String?  @map("serial_number") @db.VarChar
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  partNumber Pn?        @relation(fields: [partNumberId], references: [id])
+  dataItems  DataItem[]
+
+  @@map("sn")
+}
+
 model Task {
-  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workOrderId  String? @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
-  description  String?
-  completed    String?
-  completedAt  String? @map("completed_at")
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workOrderId String? @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
+  description String?
+  completed   String?
+  completedAt String? @map("completed_at")
 
   workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
 
@@ -175,10 +223,11 @@ model WorkOrder {
   description       String?
   workOrderCode     String?   @map("work_order_code")
 
-  machine Machine? @relation(fields: [machineId], references: [id])
-  line    Line?    @relation(fields: [lineId], references: [id])
-  notes   Note[]
-  tasks   Task[]
+  machine       Machine?       @relation(fields: [machineId], references: [id])
+  line          Line?          @relation(fields: [lineId], references: [id])
+  notes         Note[]
+  tasks         Task[]
+  notifications Notification[]
 
   @@map("work_order")
 }

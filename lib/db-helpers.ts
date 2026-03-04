@@ -22,21 +22,20 @@ import { Prisma } from '@prisma/client'
 export const actualOutputDb = {
     // Get all actual outputs with optional filters
     async getAll(filters?: {
-        lineId?: string
-        shiftNumber?: number
-        date?: Date
-        pn?: string
+        dataItemId?: string
     }) {
         return await prisma.actualOutput.findMany({
             where: filters,
+            include: { dataItem: true },
             orderBy: { createdAt: 'desc' },
         })
     },
 
     // Get actual output by ID
-    async getById(id: bigint) {
+    async getById(id: string) {
         return await prisma.actualOutput.findUnique({
             where: { id },
+            include: { dataItem: true },
         })
     },
 
@@ -48,7 +47,7 @@ export const actualOutputDb = {
     },
 
     // Update actual output
-    async update(id: bigint, data: Prisma.ActualOutputUpdateInput) {
+    async update(id: string, data: Prisma.ActualOutputUpdateInput) {
         return await prisma.actualOutput.update({
             where: { id },
             data,
@@ -56,48 +55,9 @@ export const actualOutputDb = {
     },
 
     // Delete actual output
-    async delete(id: bigint) {
+    async delete(id: string) {
         return await prisma.actualOutput.delete({
             where: { id },
-        })
-    },
-
-    // Get actual output by line and date
-    async getByLineAndDate(lineId: string, date: Date) {
-        return await prisma.actualOutput.findMany({
-            where: {
-                lineId,
-                date,
-            },
-            orderBy: { hourSlot: 'asc' },
-        })
-    },
-
-    // Get actual output summary
-    async getSummary(filters?: {
-        lineId?: string
-        startDate?: Date
-        endDate?: Date
-    }) {
-        const where: any = {}
-        if (filters?.lineId) where.lineId = filters.lineId
-        if (filters?.startDate || filters?.endDate) {
-            where.date = {}
-            if (filters.startDate) where.date.gte = filters.startDate
-            if (filters.endDate) where.date.lte = filters.endDate
-        }
-
-        return await prisma.actualOutput.groupBy({
-            by: ['lineId', 'date'],
-            where,
-            _sum: {
-                output: true,
-                reject: true,
-                targetOutput: true,
-            },
-            orderBy: {
-                date: 'desc',
-            },
         })
     },
 }
@@ -108,20 +68,27 @@ export const actualOutputDb = {
 export const dataItemsDb = {
     // Get all data items with optional filters
     async getAll(filters?: {
-        pn?: string
-        lineId?: string
+        lineProcessId?: string
         status?: string
     }) {
         return await prisma.dataItem.findMany({
             where: filters,
+            include: {
+                snRelation: true,
+                lineProcess: true,
+            },
             orderBy: { createdAt: 'desc' },
         })
     },
 
-    // Get data item by SN
-    async getBySn(sn: string) {
+    // Get data item by ID
+    async getById(id: string) {
         return await prisma.dataItem.findUnique({
-            where: { sn },
+            where: { id },
+            include: {
+                snRelation: true,
+                lineProcess: true,
+            },
         })
     },
 
@@ -133,38 +100,28 @@ export const dataItemsDb = {
     },
 
     // Update data item
-    async update(sn: string, data: Prisma.DataItemUpdateInput) {
+    async update(id: string, data: Prisma.DataItemUpdateInput) {
         return await prisma.dataItem.update({
-            where: { sn },
+            where: { id },
             data,
         })
     },
 
     // Delete data item
-    async delete(sn: string) {
+    async delete(id: string) {
         return await prisma.dataItem.delete({
-            where: { sn },
-        })
-    },
-
-    // Get data items by PN
-    async getByPn(pn: string) {
-        return await prisma.dataItem.findMany({
-            where: { pn },
-            orderBy: { createdAt: 'desc' },
+            where: { id },
         })
     },
 
     // Get pass/reject statistics
     async getStatistics(filters?: {
-        pn?: string
-        lineId?: string
+        lineProcessId?: string
         startDate?: Date
         endDate?: Date
     }) {
         const where: any = {}
-        if (filters?.pn) where.pn = filters.pn
-        if (filters?.lineId) where.lineId = filters.lineId
+        if (filters?.lineProcessId) where.lineProcessId = filters.lineProcessId
         if (filters?.startDate || filters?.endDate) {
             where.createdAt = {}
             if (filters.startDate) where.createdAt.gte = filters.startDate
@@ -175,7 +132,7 @@ export const dataItemsDb = {
             by: ['status'],
             where,
             _count: {
-                sn: true,
+                id: true,
             },
         })
     },
@@ -284,6 +241,75 @@ export const machinesDb = {
             },
             orderBy: { nextMaintenance: 'asc' },
         })
+    },
+}
+
+/**
+ * Machine Status Log Functions
+ */
+export const machineStatusLogDb = {
+    // Get current open event for a machine
+    async getCurrentEvent(machineId: string) {
+        return await prisma.machineStatusLog.findFirst({
+            where: { machineId, endTime: null },
+            orderBy: { startTime: 'desc' },
+        })
+    },
+
+    // Get running hours for a machine over a period
+    async getRunningHours(machineId: string, since?: Date) {
+        const where: any = {
+            machineId,
+            status: 'active', // Only count 'active' as running
+        }
+        if (since) {
+            where.startTime = { gte: since }
+        }
+
+        const logs = await prisma.machineStatusLog.findMany({
+            where,
+            select: { durationSeconds: true, startTime: true, endTime: true },
+        })
+
+        let totalSeconds = 0
+        for (const log of logs) {
+            if (log.durationSeconds) {
+                totalSeconds += Number(log.durationSeconds)
+            } else if (!log.endTime) {
+                // Live: current open event
+                totalSeconds += Math.floor((Date.now() - log.startTime.getTime()) / 1000)
+            }
+        }
+
+        return {
+            totalSeconds,
+            totalHours: Math.round(totalSeconds / 36) / 100,
+        }
+    },
+
+    // Get status breakdown for a machine
+    async getStatusBreakdown(machineId: string, days: number = 7) {
+        const since = new Date()
+        since.setDate(since.getDate() - days)
+
+        const logs = await prisma.machineStatusLog.findMany({
+            where: {
+                machineId,
+                startTime: { gte: since },
+            },
+            select: { status: true, durationSeconds: true, startTime: true, endTime: true },
+        })
+
+        const breakdown: Record<string, number> = {}
+        for (const log of logs) {
+            const seconds = log.durationSeconds
+                ? Number(log.durationSeconds)
+                : (!log.endTime ? Math.floor((Date.now() - log.startTime.getTime()) / 1000) : 0)
+
+            breakdown[log.status] = (breakdown[log.status] || 0) + seconds
+        }
+
+        return breakdown
     },
 }
 
@@ -457,12 +483,15 @@ export const notificationsDb = {
  * Processes Functions
  */
 export const processesDb = {
-    // Get all processes
     async getAll(filters?: {
         lineId?: string
     }) {
+        const whereClause: any = {}
+        if (filters?.lineId) {
+            whereClause.lineProcesses = { some: { lineId: filters.lineId } }
+        }
         return await prisma.process.findMany({
-            where: filters,
+            where: whereClause,
             orderBy: { index: 'asc' },
         })
     },

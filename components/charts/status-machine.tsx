@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useState, useCallback } from 'react';
+import { memo, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase/supabase';
 import { MachineStatus } from '@/types';
 import { Cpu, Wifi, Layers, Wrench, Play, PauseCircle, AlertTriangle, PowerOff } from 'lucide-react';
@@ -132,6 +132,9 @@ const getStatusConfig = (status: string) => {
 function StatusMachine({ className = '', machinesData, isLoading: externalLoading, selectedLineId }: StatusMachineProps) {
     const [localMachines, setLocalMachines] = useState<MachineStatus[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isHovered, setIsHovered] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const scrollDirectionRef = useRef(1);
 
     const useSWRData = !!machinesData;
 
@@ -201,6 +204,45 @@ function StatusMachine({ className = '', machinesData, isLoading: externalLoadin
         inactive: machines.filter(m => ['inactive', 'offline', 'stopped'].includes(m.status)).length,
     };
 
+    // Auto-scroll logic (7 seconds total duration)
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+
+        let animationFrameId: number;
+        let currentScroll = el.scrollTop;
+        let lastTime = performance.now();
+        const durationMs = 5000;
+
+        const scrollStep = (timestamp: number) => {
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            if (!isHovered && el) {
+                const maxScroll = el.scrollHeight - el.clientHeight;
+                if (maxScroll > 0) {
+                    const speed = maxScroll / durationMs;
+                    currentScroll += speed * deltaTime * scrollDirectionRef.current;
+
+                    if (currentScroll >= maxScroll) {
+                        currentScroll = maxScroll;
+                        scrollDirectionRef.current = -1;
+                    } else if (currentScroll <= 0) {
+                        currentScroll = 0;
+                        scrollDirectionRef.current = 1;
+                    }
+
+                    el.scrollTop = currentScroll;
+                }
+            }
+            animationFrameId = requestAnimationFrame(scrollStep);
+        };
+
+        animationFrameId = requestAnimationFrame(scrollStep);
+
+        return () => cancelAnimationFrame(animationFrameId);
+    }, [isHovered, hasProcessView, machines.length]);
+
     if (isLoading) {
         return (
             <div className={`chart-card p-3 text-center h-full flex flex-col items-center justify-center overflow-hidden ${className}`}>
@@ -211,7 +253,11 @@ function StatusMachine({ className = '', machinesData, isLoading: externalLoadin
     }
 
     return (
-        <div className={`chart-card p-3 h-full flex flex-col overflow-hidden ${className}`}>
+        <div
+            className={`chart-card p-3 h-full flex flex-col overflow-hidden ${className}`}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
             {/* Header */}
             <div className="flex items-center justify-between mb-1.5 flex-shrink-0">
                 <div className="flex items-center gap-1.5">
@@ -248,8 +294,8 @@ function StatusMachine({ className = '', machinesData, isLoading: externalLoadin
 
             {/* Process-based view when line is selected */}
             {hasProcessView ? (
-                <div className="flex-1 overflow-auto no-scrollbar">
-                    <div className="flex flex-col gap-1.5">
+                <div className="flex-1 overflow-auto no-scrollbar" ref={scrollRef}>
+                    <div className="flex flex-col gap-1.5 pt-1">
                         {processes.map((proc, idx) => {
                             const machine = proc.machine;
                             const status = machine?.status?.toLowerCase() || 'inactive';
@@ -290,7 +336,7 @@ function StatusMachine({ className = '', machinesData, isLoading: externalLoadin
                 </div>
             ) : (
                 /* Grid view for all machines */
-                <div className="flex-1 grid gap-1.5 overflow-auto no-scrollbar" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(72px, 1fr))` }}>
+                <div className="flex-1 grid gap-1.5 overflow-auto no-scrollbar pt-1" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(72px, 1fr))` }} ref={scrollRef}>
                     {machines.map((machine) => {
                         const config = getStatusConfig(machine.status);
                         const StatusIcon = config.icon;

@@ -33,7 +33,7 @@ export default function ManagementSystemPage() {
     { id: 'overview' as TabType, label: 'Overview', icon: <Activity size={18} /> },
     // { id: 'machine-dashboard' as TabType, label: 'Machine Dashboard', icon: <LayoutDashboard size={18} /> },
     { id: 'work-orders' as TabType, label: 'Work Orders', icon: <FileText size={18} /> },
-    { id: 'machines' as TabType, label: 'Machines', icon: <Wrench size={18} /> },
+    { id: 'machines' as TabType, label: 'Machine Management', icon: <Wrench size={18} /> },
     { id: 'history' as TabType, label: 'History', icon: <Clock size={18} /> },
     { id: 'schedule' as TabType, label: 'Schedule', icon: <Calendar size={18} /> },
     { id: 'notifications' as TabType, label: 'Notifications', icon: <Bell size={18} /> },
@@ -94,8 +94,8 @@ export default function ManagementSystemPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600 font-semibold'
-                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                  ? 'border-blue-600 text-blue-600 font-semibold'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
                   }`}
               >
                 {tab.icon}
@@ -202,14 +202,14 @@ export default function ManagementSystemPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${wo.priority === 'High' ? 'bg-red-100 text-red-700' :
-                            wo.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-green-100 text-green-700'
+                          wo.priority === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-green-100 text-green-700'
                           }`}>
                           {wo.priority}
                         </span>
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${wo.status === 'In-Progress' ? 'bg-blue-100 text-blue-700' :
-                            wo.status === 'Pending' ? 'bg-gray-100 text-gray-700' :
-                              'bg-green-100 text-green-700'
+                          wo.status === 'Pending' ? 'bg-gray-100 text-gray-700' :
+                            'bg-green-100 text-green-700'
                           }`}>
                           {wo.status}
                         </span>
@@ -228,12 +228,12 @@ export default function ManagementSystemPage() {
                     { machine: 'Conveyor #1', issue: 'Throughput drop 15%', time: '1 hour ago', severity: 'info' },
                   ].map((alert, index) => (
                     <div key={index} className={`flex items-start gap-2 p-2.5 rounded-md border-l-4 ${alert.severity === 'critical' ? 'bg-red-50 border-red-500' :
-                        alert.severity === 'warning' ? 'bg-yellow-50 border-yellow-500' :
-                          'bg-blue-50 border-blue-500'
+                      alert.severity === 'warning' ? 'bg-yellow-50 border-yellow-500' :
+                        'bg-blue-50 border-blue-500'
                       }`}>
                       <AlertCircle className={`flex-shrink-0 ${alert.severity === 'critical' ? 'text-red-600' :
-                          alert.severity === 'warning' ? 'text-yellow-600' :
-                            'text-blue-600'
+                        alert.severity === 'warning' ? 'text-yellow-600' :
+                          'text-blue-600'
                         }`} size={16} />
                       <div className="flex-1 min-w-0">
                         <div className="font-semibold text-gray-900 text-sm">{alert.machine}</div>

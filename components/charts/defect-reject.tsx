@@ -20,10 +20,8 @@ function DefectRejectBarChart({
     className = '',
 }: DefectRejectBarChartProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [isScrollReady, setIsScrollReady] = useState(false);
-    const animationRef = useRef<number | null>(null);
-    const scrollPositionRef = useRef(0);
-    const contentClonedRef = useRef(false);
+    const scrollDirectionRef = useRef(1);
+    const [isHovered, setIsHovered] = useState(false);
 
     const stats = {
         totalProduced: 45780,
@@ -43,50 +41,51 @@ function DefectRejectBarChart({
         { process: 'QC', defectCount: 25, percentage: 2.0, color: '#ec4899', gradient: 'from-pink-500 to-pink-400' },
     ];
 
+    // Auto-scroll logic (7 seconds total duration)
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
 
-        if (!contentClonedRef.current) {
-            const originalContent = el.innerHTML;
-            el.innerHTML = originalContent + originalContent;
-            contentClonedRef.current = true;
-        }
+        let animationFrameId: number;
+        let currentScroll = el.scrollTop;
+        let lastTime = performance.now();
+        const durationMs = 5000;
 
-        setIsScrollReady(true);
+        const scrollStep = (timestamp: number) => {
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
 
-        return () => {
-            if (animationRef.current) cancelAnimationFrame(animationRef.current);
-        };
-    }, []);
+            if (!isHovered && el) {
+                const maxScroll = el.scrollHeight - el.clientHeight;
+                if (maxScroll > 0) {
+                    const speed = maxScroll / durationMs;
+                    currentScroll += speed * deltaTime * scrollDirectionRef.current;
 
-    useEffect(() => {
-        if (!isScrollReady) return;
+                    if (currentScroll >= maxScroll) {
+                        currentScroll = maxScroll;
+                        scrollDirectionRef.current = -1;
+                    } else if (currentScroll <= 0) {
+                        currentScroll = 0;
+                        scrollDirectionRef.current = 1;
+                    }
 
-        const el = scrollRef.current;
-        if (!el) return;
-
-        const scrollableHeight = el.scrollHeight / 2;
-        if (scrollableHeight <= 10) return;
-
-        const speed = 0.4;
-
-        const animate = () => {
-            scrollPositionRef.current += speed;
-            if (scrollPositionRef.current >= scrollableHeight) scrollPositionRef.current = 0;
-            el.scrollTop = scrollPositionRef.current;
-            animationRef.current = requestAnimationFrame(animate);
+                    el.scrollTop = currentScroll;
+                }
+            }
+            animationFrameId = requestAnimationFrame(scrollStep);
         };
 
-        animationRef.current = requestAnimationFrame(animate);
+        animationFrameId = requestAnimationFrame(scrollStep);
 
-        return () => {
-            if (animationRef.current) cancelAnimationFrame(animationRef.current);
-        };
-    }, [isScrollReady]);
+        return () => cancelAnimationFrame(animationFrameId);
+    }, [isHovered, defectByProcess.length]);
 
     return (
-        <div className={`chart-card p-3 flex flex-col h-full w-full overflow-hidden ${className}`}>
+        <div
+            className={`chart-card p-3 flex flex-col h-full w-full overflow-hidden ${className}`}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+        >
             {/* Header */}
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <div className="flex items-center gap-2">

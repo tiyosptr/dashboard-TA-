@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 
 // Helper function to calculate hour slot from timestamp
 function calculateHourSlot(date: Date): string {
@@ -8,31 +8,57 @@ function calculateHourSlot(date: Date): string {
     return `${hour.toString().padStart(2, '0')}:00-${nextHour.toString().padStart(2, '0')}:00`;
 }
 
-// POST - Sync/recalculate actual output from data_items using Prisma
+/**
+ * POST - Sync/recalculate actual output from data_items
+ * 
+ * New schema relationships:
+ *   actual_output → data_items (via data_item_id)
+ *   data_items → line_process (via line_process_id) → has line_id
+ *   data_items → sn (via sn column) → pn (via part_number_id)
+ * 
+ * Body params:
+ *   - line_id: optional filter by line
+ *   - date: optional filter by date
+ */
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { line_id, date, pn } = body;
+        const { line_id, date } = body;
 
-        // Build query filters
-        const where: any = {};
-        if (line_id) where.lineId = line_id;
-        if (pn) where.pn = pn;
+        // Build query for data_items
+        let query = supabaseAdmin
+            .from('data_items')
+            .select(`
+                id,
+                sn,
+                status,
+                created_at,
+                line_process_id,
+                line_process:line_process_id (
+                    line_id
+                )
+            `)
+            .order('created_at', { ascending: true });
+
+        // Filter by date range
         if (date) {
             const startDate = new Date(date);
             const endDate = new Date(date);
             endDate.setDate(endDate.getDate() + 1);
-            where.createdAt = {
-                gte: startDate,
-                lt: endDate
-            };
+            query = query
+                .gte('created_at', startDate.toISOString())
+                .lt('created_at', endDate.toISOString());
         }
 
-        // Fetch data items
-        const dataItems = await prisma.dataItem.findMany({
-            where,
-            orderBy: { createdAt: 'asc' }
-        });
+        const { data: dataItems, error: fetchError } = await query;
+
+        if (fetchError) {
+            console.error('Error fetching data_items:', fetchError);
+            return NextResponse.json({
+                success: false,
+                error: fetchError.message,
+            }, { status: 500 });
+        }
 
         if (!dataItems || dataItems.length === 0) {
             return NextResponse.json({
@@ -42,83 +68,62 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // Group data by line_id, shift_number, hour_slot, date, pn
-        const aggregated = new Map<string, {
-            lineId: string;
-            shiftNumber: number;
-            hourSlot: string;
-            date: Date;
-            pn: string;
-            output: number;
-            reject: number;
-        }>();
-
-        for (const item of dataItems) {
-            if (!item.lineId || !item.pn || !item.createdAt) continue;
-
-            const itemDate = new Date(item.createdAt);
-            const dateOnly = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
-            const hourSlot = calculateHourSlot(itemDate);
-            const shiftNumber = 1; // Default shift
-
-            const key = `${item.lineId}_${shiftNumber}_${hourSlot}_${dateOnly.toISOString()}_${item.pn}`;
-
-            if (!aggregated.has(key)) {
-                aggregated.set(key, {
-                    lineId: item.lineId,
-                    shiftNumber,
-                    hourSlot,
-                    date: dateOnly,
-                    pn: item.pn,
-                    output: 0,
-                    reject: 0,
-                });
-            }
-
-            const record = aggregated.get(key)!;
-            if (item.status === 'pass') {
-                record.output++;
-            } else if (item.status === 'reject') {
-                record.reject++;
-            }
+        // Filter by line_id if provided (through line_process relation)
+        let filteredItems = dataItems;
+        if (line_id) {
+            filteredItems = dataItems.filter((item: any) => {
+                const lp = item.line_process;
+                return lp && (lp as any).line_id === line_id;
+            });
         }
 
-        // Upsert to actual_output using Prisma
-        const upsertPromises = Array.from(aggregated.values()).map(async (record) => {
-            await prisma.actualOutput.upsert({
-                where: {
-                    actual_output_line_id_shift_number_hour_slot_date_pn_key: {
-                        lineId: record.lineId,
-                        shiftNumber: record.shiftNumber,
-                        hourSlot: record.hourSlot,
-                        date: record.date,
-                        pn: record.pn
-                    }
-                },
-                update: {
-                    output: record.output,
-                    reject: record.reject,
-                    updatedAt: new Date(),
-                },
-                create: {
-                    lineId: record.lineId,
-                    shiftNumber: record.shiftNumber,
-                    hourSlot: record.hourSlot,
-                    date: record.date,
-                    pn: record.pn,
-                    output: record.output,
-                    reject: record.reject,
-                    targetOutput: 1000, // Default target
-                }
-            });
-        });
+        // Check which data_items already have actual_output records
+        const dataItemIds = filteredItems.map((item: any) => item.id);
 
-        await Promise.all(upsertPromises);
+        const { data: existingOutputs } = await supabaseAdmin
+            .from('actual_output')
+            .select('id, data_item_id')
+            .in('data_item_id', dataItemIds);
+
+        const existingDataItemIds = new Set(
+            (existingOutputs || []).map((o: any) => o.data_item_id)
+        );
+
+        // Create actual_output records for data_items that don't have one yet
+        const newOutputs = filteredItems
+            .filter((item: any) => !existingDataItemIds.has(item.id))
+            .map((item: any) => {
+                const createdAt = new Date(item.created_at);
+                const hourSlot = calculateHourSlot(createdAt);
+
+                return {
+                    id: crypto.randomUUID(),
+                    data_item_id: item.id,
+                    hour_slot: hourSlot,
+                    output: item.status, // 'pass' or 'reject'
+                    target_output: 1000,
+                };
+            });
+
+        if (newOutputs.length > 0) {
+            const { error: insertError } = await supabaseAdmin
+                .from('actual_output')
+                .insert(newOutputs);
+
+            if (insertError) {
+                console.error('Error inserting actual_output:', insertError);
+                return NextResponse.json({
+                    success: false,
+                    error: insertError.message,
+                }, { status: 500 });
+            }
+        }
 
         return NextResponse.json({
             success: true,
             message: 'Actual output synced successfully',
-            processed: aggregated.size,
+            processed: newOutputs.length,
+            skipped: filteredItems.length - newOutputs.length,
         });
     } catch (error: any) {
         console.error('Error syncing actual output:', error);

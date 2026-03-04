@@ -87,16 +87,29 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const { process_id, ...machineData } = body
 
     const { data: machine, error } = await supabaseAdmin
       .from('machine')
-      .insert(body)
+      .insert({ ...machineData, status: machineData.status || 'inactive' })
       .select()
       .single()
 
     if (error) {
       console.error('Error creating machine:', error)
       return NextResponse.json({ error: 'Failed to create machine' }, { status: 500 })
+    }
+
+    // Link machine to selected process
+    if (process_id && machine.id) {
+      const { error: processError } = await supabaseAdmin
+        .from('process')
+        .update({ machine_id: machine.id })
+        .eq('id', process_id)
+
+      if (processError) {
+        console.error('Error linking machine to process:', processError)
+      }
     }
 
     return NextResponse.json(machine, { status: 201 })
