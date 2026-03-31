@@ -5,7 +5,7 @@ import {
   Search, Activity, AlertTriangle, CheckCircle, Wrench,
   TrendingUp, TrendingDown, Zap, RefreshCw, Filter,
   ChevronRight, Settings, X, ArrowUpRight, ArrowDownRight,
-  BarChart3, Clock, Gauge, Shield, Box, Cpu,
+  BarChart3, Clock, Gauge, Shield, Box, Cpu, CalendarDays,
   Play, PauseCircle, PowerOff, Plus
 } from 'lucide-react';
 import {
@@ -287,6 +287,84 @@ function MachineDetailModal({
   const [isUpdating, setIsUpdating] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
 
+  // ── Date & Shift selection ───────────────────────────────────────
+  const todayWib = (() => {
+    const now = new Date();
+    const wib = new Date(now.getTime() + 7 * 3600000);
+    return wib.toISOString().split('T')[0];
+  })();
+  const [selectedDate, setSelectedDate] = useState(todayWib);
+  const [selectedShiftId, setSelectedShiftId] = useState<string>('');
+
+  // ── Real output data state ───────────────────────────────────────
+  const [outputLoading, setOutputLoading] = useState(true);
+  const [outputApiData, setOutputApiData] = useState<{
+    totalPass: number;
+    totalReject: number;
+    totalProduced: number;
+    targetOutput: number;
+    hourly: { hour_slot: string; pass: number; reject: number; total: number }[];
+    shift: { id: string; name: string; start_time: string; end_time: string } | null;
+    allShifts: { id: string; name: string; start_time: string; end_time: string }[];
+  } | null>(null);
+
+  // ── Cycle Time data state (reads saved data from DB — no calculation) ──
+  const [cycleTimeLoading, setCycleTimeLoading] = useState(true);
+  const [cycleTimeApiData, setCycleTimeApiData] = useState<{
+    total_output: number;
+    actual_cycle_time: number | null;
+  } | null>(null);
+
+  // Fetch output data whenever machine, date, or shift changes
+  useEffect(() => {
+    async function loadOutputData() {
+      setOutputLoading(true);
+      try {
+        const params = new URLSearchParams({ machineId: machine.id, date: selectedDate });
+        if (selectedShiftId) params.set('shiftId', selectedShiftId);
+        const res = await fetch(`/api/machines/output?${params.toString()}`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          setOutputApiData(json.data);
+          if (!selectedShiftId && json.data.shift) {
+            setSelectedShiftId(json.data.shift.id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch machine output:', err);
+      } finally {
+        setOutputLoading(false);
+      }
+    }
+    loadOutputData();
+  }, [machine.id, selectedDate, selectedShiftId]);
+
+  // Fetch saved cycle time data (lightweight DB read)
+  useEffect(() => {
+    async function loadCycleTimeData() {
+      setCycleTimeLoading(true);
+      try {
+        const params = new URLSearchParams({ machineId: machine.id });
+        if (selectedShiftId) params.set('shiftId', selectedShiftId);
+        const res = await fetch(`/api/machines/cycle-time?${params.toString()}`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          setCycleTimeApiData({
+            total_output: json.data.total_output ?? 0,
+            actual_cycle_time: json.data.actual_cycle_time,
+          });
+        } else {
+          setCycleTimeApiData(null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch cycle time:', err);
+      } finally {
+        setCycleTimeLoading(false);
+      }
+    }
+    loadCycleTimeData();
+  }, [machine.id, selectedShiftId]);
+
   const handleStatusChange = async (newStatus: string) => {
     if (machine.status === newStatus || isUpdating) return;
 
@@ -311,20 +389,57 @@ function MachineDetailModal({
       setIsUpdating(false);
     }
   };
+
   const config = getStatusConfig(machine.status);
   const metrics = useMemo(() => generateMetrics(machine), [machine]);
   const StatusIcon = config.icon;
 
-  // Mock hourly data for charts
-  const hours = Array.from({ length: 8 }, (_, i) => `${(7 + i).toString().padStart(2, '0')}:00`);
-  const seedNum = machine.id.charCodeAt(0);
+  // ── Derived output values ────────────────────────────────────────
+  const hasRealData = (outputApiData !== null) && !outputLoading;
+  const displayPass = hasRealData ? (outputApiData?.totalPass ?? 0) : metrics.output;
+  const displayReject = hasRealData ? (outputApiData?.totalReject ?? 0) : metrics.reject;
+  const displayTotal = hasRealData ? (outputApiData?.totalProduced ?? 0) : (metrics.output + metrics.reject);
+  const displayTarget = hasRealData ? (outputApiData?.targetOutput ?? metrics.targetOutput) : metrics.targetOutput;
+  const activeShiftInfo = outputApiData?.shift ?? null;
+  const allShifts = outputApiData?.allShifts ?? [];
 
-  const outputData = hours.map((_, i) => Math.round(metrics.output / 8 * (0.6 + Math.sin(seedNum + i) * 0.4)));
-  const throughputData = hours.map((_, i) => Math.round(metrics.throughput * (0.7 + Math.cos(seedNum + i) * 0.3)));
-  const cycleTimeData = hours.map((_, i) => +(metrics.cycleTime * (0.85 + Math.sin(seedNum + i * 0.7) * 0.15)).toFixed(1));
-  const qualityData = hours.map((_, i) => +(metrics.quality - Math.abs(Math.sin(seedNum + i)) * 3).toFixed(1));
-  const rejectData = hours.map((_, i) => Math.max(0, Math.round(metrics.reject / 8 * (0.5 + Math.sin(seedNum + i + 1) * 0.5))));
-  const oeeData = hours.map((_, i) => Math.round(metrics.oee * (0.8 + Math.cos(seedNum + i * 0.5) * 0.2)));
+  // ── Derived cycle time values ───────────────────────────────────
+  const hasRealCycleTime = (cycleTimeApiData !== null) && !cycleTimeLoading;
+  const displayCycleTime = hasRealCycleTime && cycleTimeApiData?.actual_cycle_time !== null
+    ? cycleTimeApiData.actual_cycle_time
+    : metrics.cycleTime;
+  const displayCycleTimeOutput = hasRealCycleTime
+    ? cycleTimeApiData?.total_output ?? 0
+    : 0;
+
+  // Format cycle time value for display (items per second)
+  const formatCTValue = (value: number | null): string => {
+    if (value === null || value <= 0) return '—';
+    // value is items/sec
+    if (value < 1) {
+      const perMinute = value * 60;
+      return `${perMinute.toFixed(2)}/minute`;
+    }
+    return `${value.toFixed(2)}/sec`;
+  };
+
+  // ── Hourly chart data from API ───────────────────────────────────
+  const shiftHours = (outputApiData?.hourly ?? []).map(h => h.hour_slot.split('-')[0]);
+  const realOutputByHour = (outputApiData?.hourly ?? []).map(h => h.pass);
+  const realRejectByHour = (outputApiData?.hourly ?? []).map(h => h.reject);
+
+  // Mock hourly data for other charts (throughput, quality, OEE)
+  const seedNum = machine.id.charCodeAt(0);
+  const throughputData = shiftHours.map((_, i) => Math.round(metrics.throughput * (0.7 + Math.cos(seedNum + i) * 0.3)));
+  const cycleTimeData = shiftHours.map((_, i) => {
+    // Use real cycle time as base if available, with slight variation per hour
+    const baseCT = hasRealCycleTime && cycleTimeApiData?.actual_cycle_time
+      ? cycleTimeApiData.actual_cycle_time
+      : metrics.cycleTime;
+    return +(baseCT * (0.85 + Math.sin(seedNum + i * 0.7) * 0.15)).toFixed(1);
+  });
+  const qualityData = shiftHours.map((_, i) => +(metrics.quality - Math.abs(Math.sin(seedNum + i)) * 3).toFixed(1));
+  const oeeData = shiftHours.map((_, i) => Math.round(metrics.oee * (0.8 + Math.cos(seedNum + i * 0.5) * 0.2)));
 
   const chartTheme = {
     backgroundColor: 'rgba(15, 23, 42, 0.9)',
@@ -340,7 +455,7 @@ function MachineDetailModal({
 
   const makeLineChart = (label: string, data: number[], color: string, fillColor: string) => ({
     data: {
-      labels: hours,
+      labels: shiftHours,
       datasets: [{
         label,
         data,
@@ -372,7 +487,7 @@ function MachineDetailModal({
 
   const makeBarChart = (label: string, data: number[], color: string) => ({
     data: {
-      labels: hours,
+      labels: shiftHours,
       datasets: [{
         label,
         data,
@@ -396,12 +511,57 @@ function MachineDetailModal({
     },
   });
 
-  const outputChart = makeBarChart('Output', outputData, 'rgba(99, 102, 241, 0.8)');
+  // ── Stacked bar chart: Pass + Reject per hour (REAL DATA) ────────
+  const realOutputChartData = {
+    labels: shiftHours,
+    datasets: [
+      {
+        label: 'Pass',
+        data: realOutputByHour,
+        backgroundColor: 'rgba(99, 102, 241, 0.85)',
+        borderRadius: 6,
+        borderSkipped: false,
+      },
+      {
+        label: 'Reject',
+        data: realRejectByHour,
+        backgroundColor: 'rgba(244, 63, 94, 0.75)',
+        borderRadius: 6,
+        borderSkipped: false,
+      },
+    ],
+  };
+
+  const realOutputChartOptions: any = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: true, position: 'bottom' as const, labels: { font: { size: 9 }, padding: 8, usePointStyle: true } },
+      tooltip: {
+        ...chartTheme,
+        callbacks: {
+          afterBody: (items: any[]) => {
+            const idx = items[0]?.dataIndex;
+            if (idx !== undefined) {
+              const total = (realOutputByHour[idx] || 0) + (realRejectByHour[idx] || 0);
+              return [`Total: ${total} pcs`];
+            }
+            return [];
+          },
+        },
+      },
+    },
+    scales: {
+      x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+      y: { stacked: true, grid: { color: 'rgba(226,232,240,0.5)' }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+    },
+  };
+
   const throughputChart = makeLineChart('Throughput', throughputData, '#8b5cf6', 'rgba(139, 92, 246, 0.1)');
   const cycleTimeChart = makeLineChart('Cycle Time', cycleTimeData, '#14b8a6', 'rgba(20, 184, 166, 0.1)');
   const qualityChart = makeLineChart('Quality', qualityData, '#10b981', 'rgba(16, 185, 129, 0.1)');
-  const rejectChart = makeBarChart('Reject', rejectData, 'rgba(244, 63, 94, 0.7)');
   const oeeChart = makeLineChart('OEE', oeeData, '#f59e0b', 'rgba(245, 158, 11, 0.1)');
+
 
   const oeeColor = metrics.oee >= 85 ? 'text-emerald-600' : metrics.oee >= 70 ? 'text-amber-600' : 'text-red-600';
 
@@ -516,15 +676,85 @@ function MachineDetailModal({
           </div>
         </div>
 
+        {/* ── Date & Shift Filter Bar ── */}
+        <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center gap-3">
+          {/* Date Picker */}
+          <div className="flex items-center gap-2">
+            <CalendarDays size={14} className="text-slate-500" />
+            <input
+              type="date"
+              value={selectedDate}
+              max={todayWib}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition-all cursor-pointer"
+            />
+            {selectedDate !== todayWib && (
+              <button
+                onClick={() => setSelectedDate(todayWib)}
+                className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition-colors"
+              >
+                Hari ini
+              </button>
+            )}
+          </div>
+
+          {/* Shift Selector */}
+          {allShifts.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400 font-medium">Shift:</span>
+              {allShifts.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedShiftId(s.id)}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all ${selectedShiftId === s.id
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                >
+                  {s.name}
+                  <span className={`ml-1 text-[9px] font-medium ${selectedShiftId === s.id ? 'text-indigo-200' : 'text-slate-400'
+                    }`}>
+                    {s.start_time.slice(0, 5)}-{s.end_time.slice(0, 5)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Active shift indicator */}
+          {activeShiftInfo && (
+            <span className="ml-auto text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <Clock size={10} />
+              {activeShiftInfo.name} • {activeShiftInfo.start_time.slice(0, 5)}–{activeShiftInfo.end_time.slice(0, 5)}
+            </span>
+          )}
+
+          {outputLoading && <RefreshCw size={13} className="animate-spin text-slate-400 ml-auto" />}
+        </div>
+
         <div className="p-6 space-y-5">
-          {/* Quick Stats Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          {/* Quick Stats Row — real data where available */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <QuickStat icon={<Gauge size={14} />} label="OEE" value={`${metrics.oee}%`} color={oeeColor} />
-            <QuickStat icon={<BarChart3 size={14} />} label="Output" value={metrics.output.toLocaleString('id-ID')} color="text-indigo-600" />
+            <QuickStat
+              icon={outputLoading ? <RefreshCw size={14} className="animate-spin" /> : <BarChart3 size={14} />}
+              label="Pass"
+              value={outputLoading ? '…' : displayPass.toLocaleString('id-ID')}
+              color="text-indigo-600"
+            />
+            <QuickStat
+              icon={<AlertTriangle size={14} />}
+              label="Reject"
+              value={outputLoading ? '…' : displayReject.toLocaleString('id-ID')}
+              color="text-rose-600"
+            />
             <QuickStat icon={<Zap size={14} />} label="Throughput" value={`${metrics.throughput}/hr`} color="text-purple-600" />
-            <QuickStat icon={<Clock size={14} />} label="Cycle Time" value={`${metrics.cycleTime}s`} color="text-teal-600" />
-            <QuickStat icon={<Shield size={14} />} label="Quality" value={`${metrics.quality}%`} color="text-emerald-600" />
-            <QuickStat icon={<AlertTriangle size={14} />} label="Reject" value={metrics.reject.toString()} color="text-rose-600" />
+            <QuickStat
+              icon={cycleTimeLoading ? <RefreshCw size={14} className="animate-spin" /> : <Clock size={14} />}
+              label="Cycle Time"
+              value={cycleTimeLoading ? '…' : formatCTValue(displayCycleTime)}
+              color="text-teal-600"
+            />
             <QuickStat icon={<Activity size={14} />} label="Runtime" value={formatDurationFromHours(machine.total_running_hours)} color="text-slate-600" />
             <QuickStat icon={<AlertTriangle size={14} />} label="Downtime" value={formatDurationFromHours(machine.total_downtime_hours)} color="text-rose-500" />
           </div>
@@ -542,21 +772,11 @@ function MachineDetailModal({
                   </div>
                 </div>
               </div>
-              <div className="mt-3 space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Target Output</span>
-                  <span className="font-bold text-slate-700">{metrics.targetOutput.toLocaleString('id-ID')}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Actual Output</span>
-                  <span className="font-bold text-indigo-600">{metrics.output.toLocaleString('id-ID')}</span>
-                </div>
-              </div>
             </div>
 
             {/* OEE Trend */}
             <div className="lg:col-span-2 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 p-4">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">OEE Trend</h3>
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">OEE Trend (shift ini)</h3>
               <div className="h-40">
                 <Line data={oeeChart.data} options={oeeChart.options as any} />
               </div>
@@ -565,27 +785,54 @@ function MachineDetailModal({
 
           {/* Charts Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <ChartCard title="Output" subtitle="Production volume per hour" color="indigo">
-              <Bar data={outputChart.data} options={outputChart.options as any} />
+            {/* Output Chart — REAL DATA (stacked pass+reject with summary) */}
+            <ChartCard
+              title={outputLoading ? 'Output' : `Output — Pass: ${displayPass.toLocaleString('id-ID')}  Reject: ${displayReject.toLocaleString('id-ID')}`}
+              subtitle={hasRealData ? `Total: ${displayTotal.toLocaleString('id-ID')} / Target: ${displayTarget.toLocaleString('id-ID')}` : 'Memuat data…'}
+              color="indigo"
+            >
+              {outputLoading ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                    <RefreshCw size={18} className="animate-spin text-indigo-400" />
+                    <span className="text-xs font-medium">Memuat output...</span>
+                  </div>
+                </div>
+              ) : (
+                <Bar data={realOutputChartData} options={realOutputChartOptions} />
+              )}
             </ChartCard>
 
             <ChartCard title="Throughput" subtitle="Units per hour" color="purple">
               <Line data={throughputChart.data} options={throughputChart.options as any} />
             </ChartCard>
 
-            <ChartCard title="Cycle Time" subtitle="Seconds per cycle" color="teal">
-              <Line data={cycleTimeChart.data} options={cycleTimeChart.options as any} />
+            <ChartCard
+              title={cycleTimeLoading ? 'Cycle Time' : `Cycle Time — ${displayCycleTime !== null ? formatCTValue(displayCycleTime) : 'N/A'}`}
+              subtitle={hasRealCycleTime
+                ? `Total Item: ${displayCycleTimeOutput} pcs`
+                : 'Memuat data…'
+              }
+              color="teal"
+            >
+              {cycleTimeLoading ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                    <RefreshCw size={18} className="animate-spin text-teal-400" />
+                    <span className="text-xs font-medium">Menghitung cycle time...</span>
+                  </div>
+                </div>
+              ) : (
+                <Line data={cycleTimeChart.data} options={cycleTimeChart.options as any} />
+              )}
             </ChartCard>
 
             <ChartCard title="Quality Rate" subtitle="Pass percentage" color="emerald">
               <Line data={qualityChart.data} options={qualityChart.options as any} />
             </ChartCard>
-
-            <ChartCard title="Reject Count" subtitle="Rejected items per hour" color="rose">
-              <Bar data={rejectChart.data} options={rejectChart.options as any} />
-            </ChartCard>
           </div>
         </div>
+
       </div>
     </div>
   );

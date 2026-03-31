@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useMemo } from 'react';
+import useSWR from 'swr';
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -15,7 +16,7 @@ import {
 } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import { Bar } from 'react-chartjs-2';
-import { RefreshCw, TrendingUp, BarChart3, Target } from 'lucide-react';
+import { RefreshCw, TrendingUp, BarChart3, Clock } from 'lucide-react';
 
 ChartJS.register(
     CategoryScale,
@@ -29,6 +30,68 @@ ChartJS.register(
     Legend,
     annotationPlugin,
 );
+
+interface ShiftData {
+    currentShift: {
+        id: string;
+        shift_name: string;
+        start_time: string; // "HH:MM:SS"
+        end_time: string;   // "HH:MM:SS"
+    } | null;
+    isWorkingDay: boolean;
+    allShifts: {
+        id: string;
+        shift_name: string;
+        start_time: string;
+        end_time: string;
+    }[];
+    currentTimeWIB: string;
+}
+
+/** Helper: parse "HH:MM:SS" → hour integer */
+function parseHour(t: string): number {
+    return parseInt(t.split(':')[0], 10);
+}
+
+/**
+ * Build hour slot labels for a shift window.
+ * Format matches the rest of the codebase: "HH:00-(HH+1):00"
+ * e.g. start=07, end=15  →  ["07:00-08:00", …, "14:00-15:00"]
+ * e.g. start=23, end=07  →  ["23:00-24:00", "00:00-01:00", …, "06:00-07:00"]
+ *
+ * NOTE: Hour 23 slot is stored as "23:00-24:00" in the DB to avoid
+ * ambiguity with "23:00-00:00". This matches how /api/dashboard/summary builds slots.
+ */
+function buildShiftSlots(startHour: number, endHour: number): string[] {
+    const slots: string[] = [];
+    // Helper: produce one slot string for hour h (0-23)
+    const makeSlot = (h: number) => {
+        const s = h.toString().padStart(2, '0') + ':00';
+        const e = (h + 1).toString().padStart(2, '0') + ':00'; // 24:00 for h=23
+        return `${s}-${e}`;
+    };
+
+    if (endHour > startHour) {
+        // Normal shift within same calendar day, e.g. SHIFT-1 07:00–15:00
+        for (let h = startHour; h < endHour; h++) {
+            slots.push(makeSlot(h));
+        }
+    } else {
+        // Overnight shift, e.g. SHIFT-3 23:00–07:00
+        // Part 1: from startHour to midnight (hour 23 → "23:00-24:00")
+        for (let h = startHour; h < 24; h++) {
+            slots.push(makeSlot(h));
+        }
+        // Part 2: from midnight to endHour
+        for (let h = 0; h < endHour; h++) {
+            slots.push(makeSlot(h));
+        }
+    }
+    return slots;
+}
+
+
+const shiftFetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface ActualOutputProps {
     className?: string;
@@ -57,11 +120,35 @@ function ActualOutput({
     isLoading = false,
     isValidating = false,
 }: ActualOutputProps) {
-    const hourSlots = Array.from({ length: 24 }, (_, i) => {
-        const start = i.toString().padStart(2, '0') + ':00';
-        const end = (i + 1).toString().padStart(2, '0') + ':00';
-        return `${start}-${end}`;
+    // Fetch current shift info
+    const { data: shiftData } = useSWR<ShiftData>('/api/shift/current', shiftFetcher, {
+        refreshInterval: 60000, // refresh every minute
+        revalidateOnFocus: false,
     });
+
+    // Build hour slots based on active shift, fall back to 24h if no shift
+    const { hourSlots, shiftLabel, shiftTimeRange } = useMemo(() => {
+        const shift = shiftData?.currentShift;
+        if (shift) {
+            const startHour = parseHour(shift.start_time);
+            const endHour = parseHour(shift.end_time);
+            const slots = buildShiftSlots(startHour, endHour);
+            const startFmt = shift.start_time.slice(0, 5);
+            const endFmt = shift.end_time.slice(0, 5);
+            return {
+                hourSlots: slots,
+                shiftLabel: shift.shift_name,
+                shiftTimeRange: `${startFmt}–${endFmt}`,
+            };
+        }
+        // Fallback: full 24 hours
+        const slots = Array.from({ length: 24 }, (_, i) => {
+            const start = i.toString().padStart(2, '0') + ':00';
+            const end = (i + 1).toString().padStart(2, '0') + ':00';
+            return `${start}-${end}`;
+        });
+        return { hourSlots: slots, shiftLabel: null, shiftTimeRange: null };
+    }, [shiftData]);
 
     const outputByHour = hourSlots.map(slot => {
         const record = hourlyData.find(d => d.hour_slot === slot);
@@ -76,9 +163,11 @@ function ActualOutput({
     const hourlyTarget = useMemo(() => {
         const record = hourlyData.find(d => d.target_output && d.target_output > 0);
         const dailyTarget = record ? Number(record.target_output) : 1000;
-        const WORKING_HOURS = 10;
-        return Math.round(dailyTarget / WORKING_HOURS);
-    }, [hourlyData]);
+        // Divide by actual shift hours (not hardcoded 10)
+        const shiftHours = hourSlots.length || 8;
+        return Math.round(dailyTarget / shiftHours);
+    }, [hourlyData, hourSlots.length]);
+
 
     const totalGood = summary?.totalOutput ?? outputByHour.reduce((a, b) => a + b, 0);
     const totalReject = summary?.totalReject ?? rejectByHour.reduce((a, b) => a + b, 0);
@@ -99,12 +188,21 @@ function ActualOutput({
 
     const hoursWithData = outputByHour.filter((o, i) => (o + rejectByHour[i]) > 0).length;
 
+    // Append the shift END TIME as the final x-axis label (with null data)
+    // so the full shift range is visible: e.g. 23:00 … 06:00 [07:00]
+    const shiftEndLabel = shiftData?.currentShift?.end_time?.slice(0, 5) ?? null;
+    const chartLabels = [
+        ...hourSlots.map(slot => slot.split('-')[0]),
+        ...(shiftEndLabel ? [shiftEndLabel] : []),
+    ];
+
     const chartData = {
-        labels: hourSlots.map(slot => slot.split('-')[0]),
+        labels: chartLabels,
         datasets: [
             {
                 label: 'Good Output',
-                data: outputByHour,
+                // Add null for the extra end-time label (no bar rendered)
+                data: [...outputByHour, ...(shiftEndLabel ? [null] : [])] as (number | null)[],
                 backgroundColor: (context: any) => {
                     const chart = context.chart;
                     const { ctx, chartArea } = chart;
@@ -120,7 +218,7 @@ function ActualOutput({
             },
             {
                 label: 'Reject/NG',
-                data: rejectByHour,
+                data: [...rejectByHour, ...(shiftEndLabel ? [null] : [])] as (number | null)[],
                 backgroundColor: (context: any) => {
                     const chart = context.chart;
                     const { ctx, chartArea } = chart;
@@ -136,6 +234,7 @@ function ActualOutput({
             },
         ],
     };
+
 
     // Custom plugin: draws a subtle gradient zone above the target line
     const targetZonePlugin = {
@@ -242,7 +341,16 @@ function ActualOutput({
             x: {
                 grid: { display: false },
                 border: { display: false },
-                ticks: { font: { size: 10 }, color: '#94a3b8' },
+                ticks: {
+                    font: { size: 10 },
+                    color: (context: any) => {
+                        // Highlight the very last tick (shift end time) in indigo
+                        if (shiftEndLabel && context.index === chartLabels.length - 1) {
+                            return 'rgba(99, 102, 241, 0.85)';
+                        }
+                        return '#94a3b8';
+                    },
+                },
             },
             y: {
                 grid: {
@@ -305,16 +413,32 @@ function ActualOutput({
                     </div>
                     <div>
                         <h2 className="text-xs font-bold text-slate-800 tracking-wide">ACTUAL OUTPUT</h2>
-                        <p className="text-[9px] text-slate-400 -mt-0.5">Hourly production tracking</p>
+                        {shiftLabel ? (
+                            <p className="text-[9px] text-slate-400 -mt-0.5 flex items-center gap-1">
+                                <Clock size={8} className="text-indigo-400" />
+                                <span className="font-semibold text-indigo-500">{shiftLabel}</span>
+                                <span className="text-slate-300">•</span>
+                                <span>{shiftTimeRange}</span>
+                            </p>
+                        ) : (
+                            <p className="text-[9px] text-slate-400 -mt-0.5">Hourly production tracking</p>
+                        )}
                     </div>
                 </div>
                 <div className="flex items-center gap-1.5">
+                    {shiftLabel && (
+                        <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-50 rounded-full border border-indigo-200/60">
+                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                            <span className="text-[9px] font-bold text-indigo-600">{shiftLabel}</span>
+                        </div>
+                    )}
                     <div className="stat-badge stat-badge-success">
                         <TrendingUp size={9} />
                         {yieldRate.toFixed(1)}% yield
                     </div>
                 </div>
             </div>
+
 
             {/* Stats Row */}
             <div className="flex items-center gap-3 mb-2.5 flex-shrink-0">

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
+import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine';
 
 /**
  * POST /api/data-items-add
@@ -64,7 +65,16 @@ export async function POST(request: NextRequest) {
             await supabaseAdmin.from('actual_output').insert(actualOutputsToInsert);
         }
 
-        return NextResponse.json({ success: true, data, message: 'Data item berhasil ditambahkan' }, { status: 201 });
+        // Trigger cycle time calculation and AWAIT result (includes debug info)
+        const cycleTimeResult = await triggerCycleTimeUpdate(line_process_id);
+        console.log('[data-items-add] Cycle time trigger result:', JSON.stringify(cycleTimeResult));
+
+        return NextResponse.json({
+            success: true,
+            data,
+            message: 'Data item berhasil ditambahkan',
+            cycle_time_debug: cycleTimeResult,
+        }, { status: 201 });
     } catch (err) {
         console.error('Unexpected error:', err);
         return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

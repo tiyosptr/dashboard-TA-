@@ -50,6 +50,7 @@ model Line {
   lineProcesses LineProcess[]
   workOrders    WorkOrder[]
   partNumbers   Pn[]
+  oeeSummaries  OeeSummary[]
 
   @@map("line")
 }
@@ -81,6 +82,7 @@ model Machine {
   notifications  Notification[]
   workOrders     WorkOrder[]
   statusLogs     MachineStatusLog[]
+  oeeSummaries   OeeSummary[]
 
   @@map("machine")
 }
@@ -168,6 +170,8 @@ model Shift {
   endTime   DateTime @map("end_time") @db.Time(6)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
+  oeeSummaries OeeSummary[]
+
   @@map("shift")
 }
 
@@ -230,4 +234,33 @@ model WorkOrder {
   notifications Notification[]
 
   @@map("work_order")
+}
+
+model OeeSummary {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  date                 DateTime @db.Date
+  shiftId              String?  @map("shift_id") @db.Uuid
+  lineId               String   @map("line_id") @db.Uuid
+  machineId            String   @map("machine_id") @db.Uuid
+
+  plannedTimeSeconds   BigInt?  @map("planned_time_seconds")
+  operatingTimeSeconds BigInt?  @map("operating_time_seconds")
+  downtimeSeconds      BigInt?  @map("downtime_seconds")
+
+  totalOutput          BigInt?  @map("total_output")
+  goodOutput           BigInt?  @map("good_output")
+  rejectOutput         BigInt?  @map("reject_output")
+
+  availability         Decimal? @db.Decimal(6, 4)
+  performance          Decimal? @db.Decimal(6, 4)
+  quality              Decimal? @db.Decimal(6, 4)
+  oee                  Decimal? @db.Decimal(6, 4)
+
+  createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  machine              Machine   @relation(fields: [machineId], references: [id])
+  line                 Line      @relation(fields: [lineId], references: [id])
+  shift                Shift?    @relation(fields: [shiftId], references: [id])
+
+  @@map("oee_summary")
 }

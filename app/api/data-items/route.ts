@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
+import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine'
 
 // GET all data items with optional filters
 export async function GET(request: NextRequest) {
@@ -37,6 +38,14 @@ export async function POST(request: NextRequest) {
         const dataItem = await prisma.dataItem.create({
             data: body,
         })
+
+        // Trigger cycle time calculation if lineProcessId is provided
+        if (body.lineProcessId || body.line_process_id) {
+            const lpId = body.lineProcessId || body.line_process_id;
+            triggerCycleTimeUpdate(lpId).catch(err =>
+                console.error('[data-items] cycle time trigger error:', err)
+            );
+        }
 
         return NextResponse.json(dataItem, { status: 201 })
     } catch (error) {

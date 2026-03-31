@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
+import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine';
 
 /**
  * POST /api/sn
@@ -22,11 +23,8 @@ export async function POST(request: NextRequest) {
         const snRecords = [];
         const dataItemRecords = [];
         for (let i = 0; i < qty; i++) {
-            // Generate SN Format: SN-XXXXXXXXXX (10-digit)
-            // Menggunakan kombinasi timestamp dan UUID agar terjamin unik walau di-loop sangat cepat
             const nowStr = Date.now().toString().slice(-4);
             const uuidPart = crypto.randomUUID().replace(/\D/g, '').slice(0, 6);
-            // Fallback jika tidak cukup digit angka dari UUID (walau jarang)
             const fallbackRand = Math.floor(100000 + Math.random() * 900000).toString().substring(0, 6);
             const randPart = (uuidPart.length === 6) ? uuidPart : fallbackRand;
 
@@ -59,6 +57,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
+        let cycleTimeDebug = null;
+
         if (dataItemRecords.length > 0) {
             const { error: dataItemsError } = await supabaseAdmin
                 .from('data_items')
@@ -66,14 +66,22 @@ export async function POST(request: NextRequest) {
 
             if (dataItemsError) {
                 console.error('Error inserting Data Items:', dataItemsError);
-                // Kita tidak throw error karena SN nya sendiri sudah sukses dibuat
+            } else if (line_process_id) {
+                // Trigger cycle time calculation for the first process's machine
+                cycleTimeDebug = await triggerCycleTimeUpdate(line_process_id);
+                console.log('[sn] Cycle time trigger result:', JSON.stringify(cycleTimeDebug));
             }
         }
 
         const generatedSns = data.map(d => d.serial_number);
 
         return NextResponse.json(
-            { success: true, data: generatedSns, message: `${qty} Serial Number berhasil di-generate` },
+            {
+                success: true,
+                data: generatedSns,
+                message: `${qty} Serial Number berhasil di-generate`,
+                cycle_time_debug: cycleTimeDebug,
+            },
             { status: 201 }
         );
 
@@ -82,3 +90,4 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
     }
 }
+

@@ -291,15 +291,44 @@ export async function GET(request: NextRequest) {
                 },
             }
 
-            // 2. OEE (calculated from actual output data)
-            const availability = 85.0 + (Math.random() * 2) // Simulated until sensor data available
-            const oee = (availability * result.actualOutput.summary.performanceRate * result.actualOutput.summary.qualityRate) / 10000
+            // 2. OEE (fetched from oee_summary table)
+            const dateOnlyStr = todayStart.toISOString().split('T')[0]
 
-            result.oee = {
-                availability: Math.round(availability * 100) / 100,
-                performance: result.actualOutput.summary.performanceRate,
-                quality: result.actualOutput.summary.qualityRate,
-                oee: Math.round(oee * 100) / 100,
+            let oeeQuery = supabaseAdmin
+                .from('oee_summary')
+                .select('availability, performance, quality, oee')
+                .eq('date', dateOnlyStr)
+
+            if (lineId) {
+                oeeQuery = oeeQuery.eq('line_id', lineId)
+            }
+
+            const { data: oeeRecords, error: oeeError } = await oeeQuery
+
+            if (oeeError) {
+                console.error('Error fetching OEE data:', oeeError)
+            }
+
+            if (oeeRecords && oeeRecords.length > 0) {
+                const avgAvailability = oeeRecords.reduce((sum, r) => sum + Number(r.availability || 0), 0) / oeeRecords.length
+                const avgPerformance = oeeRecords.reduce((sum, r) => sum + Number(r.performance || 0), 0) / oeeRecords.length
+                const avgQuality = oeeRecords.reduce((sum, r) => sum + Number(r.quality || 0), 0) / oeeRecords.length
+                const avgOee = oeeRecords.reduce((sum, r) => sum + Number(r.oee || 0), 0) / oeeRecords.length
+
+                result.oee = {
+                    availability: Math.round(avgAvailability * 10000) / 100,
+                    performance: Math.round(avgPerformance * 10000) / 100,
+                    quality: Math.round(avgQuality * 10000) / 100,
+                    oee: Math.round(avgOee * 10000) / 100,
+                }
+            } else {
+                // Fallback to 0 if no data saved yet or missing
+                result.oee = {
+                    availability: 0,
+                    performance: 0,
+                    quality: 0,
+                    oee: 0,
+                }
             }
 
             // 3. Machine Status - filtered by lineId if provided
