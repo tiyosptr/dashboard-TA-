@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import useSWR, { preload } from 'swr';
 import {
   Search, Activity, AlertTriangle, CheckCircle, Wrench,
   TrendingUp, TrendingDown, Zap, RefreshCw, Filter,
@@ -41,6 +42,8 @@ interface LineOption {
 }
 
 // Simulated metrics - in production these would come from real sensor data
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 function generateMetrics(machine: MachineData) {
   const seed = machine.id.charCodeAt(0) + machine.id.charCodeAt(machine.id.length - 1);
   const rand = (min: number, max: number) => {
@@ -166,6 +169,17 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () =
   return (
     <div
       onClick={onClick}
+      onMouseEnter={() => {
+        const todayWib = (() => {
+          const now = new Date();
+          const wib = new Date(now.getTime() + 7 * 3600000);
+          return wib.toISOString().split('T')[0];
+        })();
+        const params = new URLSearchParams({ machineId: machine.id, date: todayWib });
+        preload(`/api/machines/output?${params.toString()}`, fetcher);
+        const ctParams = new URLSearchParams({ machineId: machine.id });
+        preload(`/api/machines/cycle-time?${ctParams.toString()}`, fetcher);
+      }}
       className={`group relative bg-white rounded-2xl border ${config.border} shadow-sm hover:shadow-xl 
                 transition-all duration-300 cursor-pointer hover:-translate-y-1 overflow-hidden`}
     >
@@ -296,74 +310,39 @@ function MachineDetailModal({
   const [selectedDate, setSelectedDate] = useState(todayWib);
   const [selectedShiftId, setSelectedShiftId] = useState<string>('');
 
-  // ── Real output data state ───────────────────────────────────────
-  const [outputLoading, setOutputLoading] = useState(true);
-  const [outputApiData, setOutputApiData] = useState<{
-    totalPass: number;
-    totalReject: number;
-    totalProduced: number;
-    targetOutput: number;
-    hourly: { hour_slot: string; pass: number; reject: number; total: number }[];
-    shift: { id: string; name: string; start_time: string; end_time: string } | null;
-    allShifts: { id: string; name: string; start_time: string; end_time: string }[];
-  } | null>(null);
+  // ── SWR Data Fetching ───────────────────────────────────────
+  
+  const outputParams = new URLSearchParams({ machineId: machine.id, date: selectedDate });
+  if (selectedShiftId) outputParams.set('shiftId', selectedShiftId);
+  const outputQueryUrl = `/api/machines/output?${outputParams.toString()}`;
 
-  // ── Cycle Time data state (reads saved data from DB — no calculation) ──
-  const [cycleTimeLoading, setCycleTimeLoading] = useState(true);
-  const [cycleTimeApiData, setCycleTimeApiData] = useState<{
-    total_output: number;
-    actual_cycle_time: number | null;
-  } | null>(null);
+  const ctParams = new URLSearchParams({ machineId: machine.id });
+  if (selectedShiftId) ctParams.set('shiftId', selectedShiftId);
+  const ctQueryUrl = `/api/machines/cycle-time?${ctParams.toString()}`;
 
-  // Fetch output data whenever machine, date, or shift changes
+  const { data: outputRes, error: outputError, isLoading: outputLoading } = useSWR(
+    outputQueryUrl,
+    fetcher,
+    { keepPreviousData: true, revalidateOnFocus: false }
+  );
+
+  const { data: ctRes, error: ctError, isLoading: cycleTimeLoading } = useSWR(
+    ctQueryUrl,
+    fetcher,
+    { keepPreviousData: true, revalidateOnFocus: false }
+  );
+
+  const outputApiData = outputRes?.success ? outputRes.data : null;
+  const cycleTimeApiData = ctRes?.success && ctRes?.data ? {
+    total_output: ctRes.data.total_output ?? 0,
+    actual_cycle_time: ctRes.data.actual_cycle_time,
+  } : null;
+
   useEffect(() => {
-    async function loadOutputData() {
-      setOutputLoading(true);
-      try {
-        const params = new URLSearchParams({ machineId: machine.id, date: selectedDate });
-        if (selectedShiftId) params.set('shiftId', selectedShiftId);
-        const res = await fetch(`/api/machines/output?${params.toString()}`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          setOutputApiData(json.data);
-          if (!selectedShiftId && json.data.shift) {
-            setSelectedShiftId(json.data.shift.id);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch machine output:', err);
-      } finally {
-        setOutputLoading(false);
-      }
+    if (!selectedShiftId && outputApiData?.shift) {
+      setSelectedShiftId(outputApiData.shift.id);
     }
-    loadOutputData();
-  }, [machine.id, selectedDate, selectedShiftId]);
-
-  // Fetch saved cycle time data (lightweight DB read)
-  useEffect(() => {
-    async function loadCycleTimeData() {
-      setCycleTimeLoading(true);
-      try {
-        const params = new URLSearchParams({ machineId: machine.id });
-        if (selectedShiftId) params.set('shiftId', selectedShiftId);
-        const res = await fetch(`/api/machines/cycle-time?${params.toString()}`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          setCycleTimeApiData({
-            total_output: json.data.total_output ?? 0,
-            actual_cycle_time: json.data.actual_cycle_time,
-          });
-        } else {
-          setCycleTimeApiData(null);
-        }
-      } catch (err) {
-        console.error('Failed to fetch cycle time:', err);
-      } finally {
-        setCycleTimeLoading(false);
-      }
-    }
-    loadCycleTimeData();
-  }, [machine.id, selectedShiftId]);
+  }, [outputApiData?.shift, selectedShiftId]);
 
   const handleStatusChange = async (newStatus: string) => {
     if (machine.status === newStatus || isUpdating) return;
@@ -424,22 +403,22 @@ function MachineDetailModal({
   };
 
   // ── Hourly chart data from API ───────────────────────────────────
-  const shiftHours = (outputApiData?.hourly ?? []).map(h => h.hour_slot.split('-')[0]);
-  const realOutputByHour = (outputApiData?.hourly ?? []).map(h => h.pass);
-  const realRejectByHour = (outputApiData?.hourly ?? []).map(h => h.reject);
+  const shiftHours = (outputApiData?.hourly ?? []).map((h: any) => h.hour_slot.split('-')[0]);
+  const realOutputByHour = (outputApiData?.hourly ?? []).map((h: any) => h.pass);
+  const realRejectByHour = (outputApiData?.hourly ?? []).map((h: any) => h.reject);
 
   // Mock hourly data for other charts (throughput, quality, OEE)
   const seedNum = machine.id.charCodeAt(0);
-  const throughputData = shiftHours.map((_, i) => Math.round(metrics.throughput * (0.7 + Math.cos(seedNum + i) * 0.3)));
-  const cycleTimeData = shiftHours.map((_, i) => {
+  const throughputData = shiftHours.map((_: any, i: number) => Math.round(metrics.throughput * (0.7 + Math.cos(seedNum + i) * 0.3)));
+  const cycleTimeData = shiftHours.map((_: any, i: number) => {
     // Use real cycle time as base if available, with slight variation per hour
     const baseCT = hasRealCycleTime && cycleTimeApiData?.actual_cycle_time
       ? cycleTimeApiData.actual_cycle_time
       : metrics.cycleTime;
     return +(baseCT * (0.85 + Math.sin(seedNum + i * 0.7) * 0.15)).toFixed(1);
   });
-  const qualityData = shiftHours.map((_, i) => +(metrics.quality - Math.abs(Math.sin(seedNum + i)) * 3).toFixed(1));
-  const oeeData = shiftHours.map((_, i) => Math.round(metrics.oee * (0.8 + Math.cos(seedNum + i * 0.5) * 0.2)));
+  const qualityData = shiftHours.map((_: any, i: number) => +(metrics.quality - Math.abs(Math.sin(seedNum + i)) * 3).toFixed(1));
+  const oeeData = shiftHours.map((_: any, i: number) => Math.round(metrics.oee * (0.8 + Math.cos(seedNum + i * 0.5) * 0.2)));
 
   const chartTheme = {
     backgroundColor: 'rgba(15, 23, 42, 0.9)',
@@ -702,7 +681,7 @@ function MachineDetailModal({
           {allShifts.length > 0 && (
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-slate-400 font-medium">Shift:</span>
-              {allShifts.map(s => (
+              {allShifts.map((s: any) => (
                 <button
                   key={s.id}
                   onClick={() => setSelectedShiftId(s.id)}
