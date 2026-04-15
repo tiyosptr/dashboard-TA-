@@ -70,13 +70,13 @@ export async function POST(request: NextRequest) {
     // Create work order
     const workOrderData = {
       work_order_code: woCode,
-      type: 'Corrective',
+      type: 'downtime',
       priority: determinePriority(notification.severity),
       machine_id: notification.machine_id,
       machine_name: notification.machine_name,
       line_id: lineId,
       name_line: nameLine,
-      status: 'Pending',
+      status: 'On-Solving',
       assigned_to: technicianName,
       created_at: new Date().toISOString(),
       schedule_date: new Date().toISOString(),

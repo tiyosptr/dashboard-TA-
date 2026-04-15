@@ -424,7 +424,7 @@ export default function NotificationsPage() {
 
   const getTypeIcon = (type: string, severity: string) => {
     const severityLower = severity.toLowerCase();
-    if (type === 'Downtime' || severityLower === 'critical') {
+    if (type?.toLowerCase() === 'downtime' || severityLower === 'critical') {
       return <AlertTriangle size={20} className="text-red-600" />;
     }
     switch (type) {
@@ -446,7 +446,7 @@ export default function NotificationsPage() {
     (n) => n.severity.toLowerCase() === 'critical' && !n.acknowledged
   ).length;
   const downtimeCount = notifications.filter(
-    (n) => n.type === 'Downtime' && !n.acknowledged
+    (n) => n.type?.toLowerCase() === 'downtime' && !n.acknowledged
   ).length;
 
   if (isLoading) {
@@ -573,7 +573,7 @@ export default function NotificationsPage() {
                 className={`bg-white rounded-xl border-l-4 p-5 shadow-sm transition-all ${notification.work_order_id
                   ? 'border-green-500 ring-2 ring-green-200'
                   : getSeverityColor(notification.severity)
-                  } ${!notification.read ? 'border-l-4' : 'border-l-4 opacity-75'} ${notification.type === 'Downtime' && !notification.work_order_id ? 'ring-2 ring-red-500 ring-opacity-50' : ''
+                  } ${!notification.read ? 'border-l-4' : 'border-l-4 opacity-75'} ${notification.type?.toLowerCase() === 'downtime' && !notification.work_order_id ? 'ring-2 ring-red-500 ring-opacity-50' : ''
                   }`}
               >
                 <div className="flex items-start gap-4">
@@ -581,7 +581,7 @@ export default function NotificationsPage() {
                   <div
                     className={`p-3 rounded-lg ${notification.work_order_id
                       ? 'bg-green-100'
-                      : notification.type === 'Downtime' || notification.severity.toLowerCase() === 'critical'
+                      : notification.type?.toLowerCase() === 'downtime' || notification.severity.toLowerCase() === 'critical'
                         ? 'bg-red-100 animate-pulse'
                         : notification.severity.toLowerCase() === 'high'
                           ? 'bg-orange-100'
@@ -613,7 +613,7 @@ export default function NotificationsPage() {
                               NEW
                             </span>
                           )}
-                          {notification.type === 'Downtime' && !notification.work_order_id && (
+                          {notification.type?.toLowerCase() === 'downtime' && !notification.work_order_id && (
                             <span className="px-2 py-0.5 bg-red-600 text-white text-xs font-semibold rounded-full animate-pulse">
                               DOWNTIME
                             </span>
@@ -640,14 +640,14 @@ export default function NotificationsPage() {
 
                     <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap mb-3">
                       <span
-                        className={`font-semibold ${notification.type === 'Downtime' ? 'text-red-600' : ''
+                        className={`font-semibold capitalize ${notification.type?.toLowerCase() === 'downtime' ? 'text-red-600' : ''
                           }`}
                       >
                         {notification.type}
                       </span>
                       <span>•</span>
                       <span>
-                        {new Date(notification.start_at).toLocaleString('id-ID', {
+                        {new Date(notification.start_at + (notification.start_at?.endsWith('Z') ? '' : 'Z')).toLocaleString('id-ID', {
                           day: 'numeric',
                           month: 'short',
                           hour: '2-digit',

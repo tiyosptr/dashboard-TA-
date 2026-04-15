@@ -76,9 +76,27 @@ export async function POST(request: NextRequest) {
                     openEvent.id
                 );
 
-                // Calculate duration of the closed event
-                const startTime = new Date(openEvent.start_time);
-                previousDurationSeconds = Math.floor((now.getTime() - startTime.getTime()) / 1000);
+                // Safely calculate duration of the closed event.
+                // Raw query Dates might be strings without UTC offset. 
+                // Alternatively, Prisma returns it as Date. We verify it.
+                let startTime = openEvent.start_time instanceof Date 
+                    ? openEvent.start_time 
+                    : new Date(openEvent.start_time);
+                
+                // Absolute timezone-safe diff protection
+                let diffSecs = Math.floor((now.getTime() - startTime.getTime()) / 1000);
+                if (diffSecs < 0) {
+                    // Fallback to Prisma standard query to get the properly hydrated timezone date if bugged
+                    const hydratedLog = await tx.machineStatusLog.findUnique({
+                        where: { id: openEvent.id }
+                    });
+                    if (hydratedLog) {
+                        diffSecs = Math.floor((now.getTime() - hydratedLog.startTime.getTime()) / 1000);
+                    }
+                    if (diffSecs < 0) diffSecs = 0; // Absolute zero clamp
+                }
+                
+                previousDurationSeconds = diffSecs;
             }
 
             // 2. Insert new event
@@ -99,14 +117,15 @@ export async function POST(request: NextRequest) {
                 const machineRecord: any[] = await tx.$queryRawUnsafe(`SELECT total_running_hours, total_downtime_hours FROM machine WHERE id = $1::uuid`, machine_id);
                 const machine = machineRecord[0];
 
-                if (previousStatus === 'active') {
-                    const currentHours = parseFloat(machine?.total_running_hours || '0');
-                    const additionalHours = previousDurationSeconds / 3600;
-                    totalRunningUpdate = (currentHours + additionalHours).toFixed(2);
-                } else if (previousStatus === 'downtime') {
-                    const currentHours = parseFloat(machine?.total_downtime_hours || '0');
-                    const additionalHours = previousDurationSeconds / 3600;
-                    totalDowntimeUpdate = (currentHours + additionalHours).toFixed(2);
+                const currentRunning = parseFloat(machine?.total_running_hours || '0');
+                const currentDowntime = parseFloat(machine?.total_downtime_hours || '0');
+                const additionalHours = previousDurationSeconds / 3600;
+
+                if (previousStatus === 'active' || previousStatus === 'running') {
+                    totalRunningUpdate = (currentRunning + additionalHours).toFixed(4);
+                } else {
+                    // ANY other status (maintenance, downtime, on hold, inactive) is effectively downtime
+                    totalDowntimeUpdate = (currentDowntime + additionalHours).toFixed(4);
                 }
             }
 

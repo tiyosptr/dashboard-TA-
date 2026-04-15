@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine'
+import { triggerThroughputUpdate } from '@/services/throughput_machine'
+import { triggerDefectByProcessUpdate } from '@/services/defect_by_process'
 
 // GET all data items with optional filters
 export async function GET(request: NextRequest) {
@@ -44,6 +46,12 @@ export async function POST(request: NextRequest) {
             const lpId = body.lineProcessId || body.line_process_id;
             triggerCycleTimeUpdate(lpId).catch(err =>
                 console.error('[data-items] cycle time trigger error:', err)
+            );
+            triggerThroughputUpdate(lpId, 10).catch(err =>
+                console.error('[data-items] throughput trigger error:', err)
+            );
+            triggerDefectByProcessUpdate(lpId).catch(err =>
+                console.error('[data-items] defect rate trigger error:', err)
             );
         }
 

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine';
+import { triggerThroughputUpdate } from '@/services/throughput_machine';
+import { triggerDefectByProcessUpdate } from '@/services/defect_by_process';
 
 /**
  * POST /api/data-items-add
@@ -69,11 +71,21 @@ export async function POST(request: NextRequest) {
         const cycleTimeResult = await triggerCycleTimeUpdate(line_process_id);
         console.log('[data-items-add] Cycle time trigger result:', JSON.stringify(cycleTimeResult));
 
+        // Trigger throughput calculation (interval_time = 10 detik)
+        const throughputResult = await triggerThroughputUpdate(line_process_id, 10);
+        console.log('[data-items-add] Throughput trigger result:', JSON.stringify(throughputResult));
+
+        // Trigger defect rate calculation → save to defect_by_process
+        const defectResult = await triggerDefectByProcessUpdate(line_process_id);
+        console.log('[data-items-add] Defect rate trigger result:', JSON.stringify(defectResult));
+
         return NextResponse.json({
             success: true,
             data,
             message: 'Data item berhasil ditambahkan',
             cycle_time_debug: cycleTimeResult,
+            throughput_debug: throughputResult,
+            defect_rate_debug: defectResult,
         }, { status: 201 });
     } catch (err) {
         console.error('Unexpected error:', err);

@@ -20,12 +20,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
         {/* DNS prefetch for API calls */}
         <link rel="dns-prefetch" href="http://localhost:3000" />
       </head>
-      <body className={`${inter.className} antialiased`}>{children}</body>
+      <body className={`${inter.className} antialiased`} suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   )
 }

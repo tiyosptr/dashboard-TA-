@@ -8,7 +8,11 @@ import WorkOrderKanban from './work-order-kanban';
 import { WorkOrder, WorkOrderStatus } from '@/types';
 import { supabase } from '@/lib/supabase/supabase';
 
-export default function WorkOrderList() {
+interface WorkOrderListProps {
+  defaultWoId?: string | null;
+}
+
+export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) {
   const [showForm, setShowForm] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
@@ -18,6 +22,8 @@ export default function WorkOrderList() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
 
   // Load work orders from API
   const loadWorkOrders = async (showLoader = true) => {
@@ -38,6 +44,15 @@ export default function WorkOrderList() {
       if (result.success) {
         console.log('Work orders loaded:', result.data.length);
         setWorkOrders(result.data);
+
+        // Auto-open work order if defaultWoId is provided and we haven't done it yet
+        if (defaultWoId && !hasAutoOpened) {
+          const woToOpen = result.data.find((wo: WorkOrder) => wo.id === defaultWoId);
+          if (woToOpen) {
+            setSelectedWorkOrder(woToOpen);
+            setHasAutoOpened(true);
+          }
+        }
       }
     } catch (error) {
       console.error('Error loading work orders:', error);
@@ -164,9 +179,10 @@ export default function WorkOrderList() {
 
   const getTypeColor = (type: string) => {
     switch (type) {
-      case 'Preventive': return 'bg-green-100 text-green-700 border-green-300';
-      case 'Corrective': return 'bg-orange-100 text-orange-700 border-orange-300';
-      case 'Inspection': return 'bg-blue-100 text-blue-700 border-blue-300';
+      case 'maintenance': return 'bg-green-100 text-green-700 border-green-300';
+      case 'repair': return 'bg-orange-100 text-orange-700 border-orange-300';
+      case 'downtime': return 'bg-red-100 text-red-700 border-red-300';
+      case 'on hold': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
       default: return 'bg-gray-100 text-gray-700 border-gray-300';
     }
   };
@@ -337,7 +353,7 @@ export default function WorkOrderList() {
                       <div className="text-xs text-gray-500">{wo.location || 'N/A'}</div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${getTypeColor(wo.type)}`}>
+                      <span className={`px-2 py-1 rounded-md text-xs font-bold border capitalize ${getTypeColor(wo.type)}`}>
                         {wo.type}
                       </span>
                     </td>

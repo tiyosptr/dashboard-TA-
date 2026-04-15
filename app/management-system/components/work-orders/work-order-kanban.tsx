@@ -155,7 +155,7 @@ export default function WorkOrderKanban({
 
                   {/* Type Badge */}
                   <div className="mb-3">
-                    <span className={`inline-block px-3 py-1 rounded-lg text-xs font-bold border-2 ${getTypeColor(wo.type)}`}>
+                    <span className={`inline-block px-3 py-1 rounded-lg text-xs font-bold border-2 capitalize ${getTypeColor(wo.type)}`}>
                       {wo.type}
                     </span>
                   </div>

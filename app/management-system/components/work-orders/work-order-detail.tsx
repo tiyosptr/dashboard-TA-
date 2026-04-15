@@ -2,7 +2,7 @@
 
 import { X, User, Clock, MapPin, CheckCircle, Circle, MessageSquare, Package, AlertCircle, Edit, Trash2 } from 'lucide-react';
 import { WorkOrder, WorkOrderStatus } from '@/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface WorkOrderDetailProps {
   workOrder: WorkOrder;
@@ -13,6 +13,32 @@ interface WorkOrderDetailProps {
 export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: WorkOrderDetailProps) {
   const [newNote, setNewNote] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'notes'>('details');
+  const [elapsedDuration, setElapsedDuration] = useState<number>(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (workOrder.status === 'On-Solving') {
+      // Use created_at or createdAt as the start time, otherwise fallback to now
+      const createdStr = (workOrder as any).created_at || (workOrder as any).createdAt;
+      const createdTime = createdStr ? new Date(createdStr).getTime() : Date.now();
+      
+      const updateElapsed = () => {
+        const diff = Math.floor((Date.now() - createdTime) / 1000);
+        setElapsedDuration(diff > 0 ? diff : 0);
+      };
+      
+      updateElapsed();
+      interval = setInterval(updateElapsed, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [workOrder]);
+
+  const formatLiveDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
+  };
 
   const handleAddNote = () => {
     if (newNote.trim()) {
@@ -46,67 +72,89 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <h2 className="text-2xl font-bold text-white">{String(workOrder.id)}</h2>
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPriorityColor(workOrder.priority)}`}>
-                {workOrder.priority}
-              </span>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col relative animate-fade-in-up">
+        {/* Header Banner - Sleek Dark Gradient */}
+        <div className="h-40 bg-gradient-to-r from-blue-700 via-indigo-800 to-purple-900 rounded-t-2xl flex flex-col justify-between p-6 pb-4 relative overflow-hidden">
+          {/* Background Decorative Rings */}
+          <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full border-[16px] border-white/5 opacity-50"></div>
+          <div className="absolute bottom-0 right-20 -mb-10 w-32 h-32 rounded-full border-[8px] border-white/10 opacity-50"></div>
 
-              {/* Status Dropdown */}
+          <div className="flex justify-between items-start relative z-10">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-3xl font-extrabold text-white flex items-center gap-3">
+                {String(workOrder.id)}
+              </h2>
+              <p className="text-indigo-100 font-medium opacity-90 flex items-center gap-1.5">
+                <MapPin size={16} />
+                {workOrder.machine_name} <span className="opacity-60">•</span> {workOrder.location}
+              </p>
+            </div>
+            
+            <button
+              onClick={onClose}
+              className="text-white/70 hover:text-white hover:bg-white/10 p-2 rounded-full transition-all"
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 relative z-10">
+            <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm backdrop-blur-md border border-white/20 text-white ${getPriorityColor(workOrder.priority).replace('text-white', '')}`}>
+              {workOrder.priority} Priority
+            </span>
+
+            {/* Status Dropdown */}
+            <div className="relative">
               <select
                 value={workOrder.status}
                 onChange={(e) => onStatusChange(workOrder.id as string, e.target.value as WorkOrderStatus)}
-                className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer focus:outline-none focus:ring-2 focus:ring-white ${getStatusColor(workOrder.status)}`}
+                className={`appearance-none pr-8 pl-4 py-1.5 rounded-full text-xs font-bold shadow-sm backdrop-blur-md cursor-pointer outline-none focus:ring-2 focus:ring-white border border-white/20 text-white ${getStatusColor(workOrder.status).replace('text-', '')}`}
+                style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
               >
-                <option value="Pending">Pending</option>
-                <option value="On-Solving">On Solving</option>
-                <option value="On-Hold">On Hold</option>
-                <option value="Completed">Completed</option>
+                <option value="Pending" className="text-gray-900 bg-white">Pending</option>
+                <option value="On-Solving" className="text-gray-900 bg-white">On Solving</option>
+                <option value="On-Hold" className="text-gray-900 bg-white">On Hold</option>
+                <option value="Completed" className="text-gray-900 bg-white">Completed</option>
               </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white/80">
+                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+              </div>
             </div>
-            <p className="text-blue-100">{workOrder.machine_name} • {workOrder.location}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-lg transition-colors"
-          >
-            <X size={24} />
-          </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 bg-gray-50 px-6">
+        <div className="flex border-b border-gray-100 bg-white px-6 shadow-sm sticky top-0 z-10">
           <button
             onClick={() => setActiveTab('details')}
-            className={`px-6 py-3 border-b-2 font-medium transition-colors ${activeTab === 'details'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+            className={`px-6 py-4 font-semibold text-sm transition-all relative ${activeTab === 'details'
+                ? 'text-indigo-600'
+                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
               }`}
           >
             Details
+            {activeTab === 'details' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
           </button>
           <button
             onClick={() => setActiveTab('tasks')}
-            className={`px-6 py-3 border-b-2 font-medium transition-colors ${activeTab === 'tasks'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+            className={`px-6 py-4 font-semibold text-sm transition-all relative ${activeTab === 'tasks'
+                ? 'text-indigo-600'
+                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
               }`}
           >
             Tasks ({completedTasks}/{totalTasks})
+            {activeTab === 'tasks' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
           </button>
           <button
             onClick={() => setActiveTab('notes')}
-            className={`px-6 py-3 border-b-2 font-medium transition-colors ${activeTab === 'notes'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+            className={`px-6 py-4 font-semibold text-sm transition-all relative ${activeTab === 'notes'
+                ? 'text-indigo-600'
+                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
               }`}
           >
             Notes ({workOrder.notes?.length || 0})
+            {activeTab === 'notes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
           </button>
         </div>
 
@@ -123,26 +171,26 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
               {/* Info Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <User className="text-blue-600" size={20} />
+                  <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                      <User size={22} />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Assigned To</p>
-                      <p className="font-semibold text-gray-900">{workOrder.assigned_to}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Assigned To</p>
+                      <p className="font-bold text-gray-900 text-base">{workOrder.assigned_to}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <Clock className="text-green-600" size={20} />
+                  <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div className="p-3 bg-green-50 text-green-600 rounded-xl">
+                      <Clock size={22} />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Scheduled</p>
-                      <p className="font-semibold text-gray-900">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Scheduled</p>
+                      <p className="font-bold text-gray-900 text-sm">
                         {new Date(workOrder.schedule_date).toLocaleString('id-ID', {
                           day: 'numeric',
-                          month: 'long',
+                          month: 'short',
                           year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit'
@@ -151,51 +199,64 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-purple-100 rounded-lg">
-                      <MapPin className="text-purple-600" size={20} />
+                  <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                      <MapPin size={22} />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Location</p>
-                      <p className="font-semibold text-gray-900">{workOrder.location}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Location</p>
+                      <p className="font-bold text-gray-900 text-sm">{workOrder.location}</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-yellow-100 rounded-lg">
-                      <AlertCircle className="text-yellow-600" size={20} />
+                  <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                      <AlertCircle size={22} />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Type</p>
-                      <p className="font-semibold text-gray-900">{workOrder.type}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Type</p>
+                      <p className="font-bold text-gray-900 capitalize text-sm">{workOrder.type}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-orange-100 rounded-lg">
-                      <Clock className="text-orange-600" size={20} />
+                  <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                    <div className="p-3 bg-orange-50 text-orange-600 rounded-xl">
+                      <Clock size={22} />
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Estimated Duration</p>
-                      <p className="font-semibold text-gray-900">{workOrder.estimated_duration}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Estimated Duration</p>
+                      <p className="font-bold text-gray-900 text-sm">{workOrder.estimated_duration}</p>
                     </div>
                   </div>
 
-                  {workOrder.completed_at && (
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-green-100 rounded-lg">
-                        <CheckCircle className="text-green-600" size={20} />
+                  {workOrder.status === 'On-Solving' ? (
+                    <div className="flex items-start gap-4 p-4 rounded-xl border border-blue-200 bg-blue-50 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-16 h-16 bg-blue-100 rounded-full blur-2xl opacity-60 animate-pulse"></div>
+                      <div className="p-3 bg-blue-600 text-white rounded-xl shadow-sm z-10 animate-pulse">
+                        <Clock size={22} />
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Completed At</p>
-                        <p className="font-semibold text-gray-900">
-                          {new Date(workOrder.completed_at).toLocaleString('id-ID')}
+                      <div className="z-10">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-blue-800 mb-1">Live Tracking Duration</p>
+                        <p className="font-bold text-blue-900 text-lg tabular-nums tracking-tight">
+                          {formatLiveDuration(elapsedDuration)}
                         </p>
                       </div>
                     </div>
-                  )}
+                  ) : workOrder.completed_at ? (
+                    <div className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 bg-white shadow-sm hover:shadow-md transition-shadow">
+                      <div className="p-3 bg-green-50 text-green-600 rounded-xl">
+                        <CheckCircle size={22} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Completed At</p>
+                        <p className="font-bold text-gray-900 text-sm">
+                          {new Date(workOrder.completed_at as string).toLocaleString('id-ID')}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -342,6 +403,16 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
         {/* Footer Actions */}
         <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
           <button
+            onClick={async () => {
+              if (confirm('Are you sure you want to delete this work order?')) {
+                try {
+                  await fetch(`/api/work-orders?id=${workOrder.id}`, { method: 'DELETE' });
+                  onClose();
+                } catch (error) {
+                  console.error('Failed to delete work order:', error);
+                }
+              }
+            }}
             className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
           >
             <Trash2 size={18} />

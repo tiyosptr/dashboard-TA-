@@ -1,90 +1,102 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Calendar, Clock, AlertCircle, Play, Pause, Edit } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Clock, AlertCircle, Play, Settings, Search, Filter, Box, MapPin, PauseCircle, AlertTriangle, PowerOff } from 'lucide-react';
 import PreventiveMaintenanceForm from './preventive-maintenance-form';
-import { PreventiveSchedule } from '@/types';
+import useSWR from 'swr';
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: any; dot: string; gradient: string }> = {
+  active: {
+    label: 'Active',
+    color: 'text-emerald-700',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-200',
+    icon: Play,
+    dot: 'bg-emerald-500',
+    gradient: 'from-emerald-500 to-emerald-600',
+  },
+  maintenance: {
+    label: 'Maintenance',
+    color: 'text-blue-700',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    icon: Settings,
+    dot: 'bg-blue-500',
+    gradient: 'from-blue-500 to-blue-600',
+  },
+  onhold: {
+    label: 'On Hold',
+    color: 'text-amber-700',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    icon: PauseCircle,
+    dot: 'bg-amber-500',
+    gradient: 'from-amber-500 to-amber-600',
+  },
+  downtime: {
+    label: 'Downtime',
+    color: 'text-rose-700',
+    bg: 'bg-rose-50',
+    border: 'border-rose-200',
+    icon: AlertTriangle,
+    dot: 'bg-rose-500',
+    gradient: 'from-rose-500 to-rose-600',
+  },
+  inactive: {
+    label: 'Inactive',
+    color: 'text-slate-600',
+    bg: 'bg-slate-50',
+    border: 'border-slate-200',
+    icon: PowerOff,
+    dot: 'bg-slate-400',
+    gradient: 'from-slate-400 to-slate-500',
+  },
+};
+
+function getStatusConfig(status: string) {
+  const s = status?.toLowerCase() || '';
+  if (s === 'active' || s === 'running') return STATUS_CONFIG['active'];
+  if (s === 'maintenance') return STATUS_CONFIG['maintenance'];
+  if (s === 'on hold' || s === 'on-hold' || s === 'onhold' || s === 'hold') return STATUS_CONFIG['onhold'];
+  if (s === 'downtime' || s === 'down' || s === 'error') return STATUS_CONFIG['downtime'];
+  if (s === 'inactive' || s === 'offline' || s === 'stopped') return STATUS_CONFIG['inactive'];
+  return STATUS_CONFIG['active'];
+}
 
 export default function MaintenanceSchedule() {
   const [showForm, setShowForm] = useState(false);
-  const [selectedSchedule, setSelectedSchedule] = useState<PreventiveSchedule | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<any | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [lineFilter, setLineFilter] = useState('all');
 
-  // Mock data
-  const schedules: PreventiveSchedule[] = [
-    {
-      id: 'PM-001',
-      machineId: 'M-001',
-      machineName: 'Injection Molding #1',
-      scheduleType: 'Time-based',
-      interval: 'Every 750 hours',
-      lastMaintenance: '2025-01-10',
-      nextMaintenance: '2025-02-10',
-      status: 'Active',
-    },
-    {
-      id: 'PM-002',
-      machineId: 'M-002',
-      machineName: 'Injection Molding #2',
-      scheduleType: 'Time-based',
-      interval: 'Every 750 hours',
-      lastMaintenance: '2025-01-12',
-      nextMaintenance: '2025-02-12',
-      status: 'Active',
-    },
-    {
-      id: 'PM-003',
-      machineId: 'M-003',
-      machineName: 'Injection Molding #3',
-      scheduleType: 'Condition-based',
-      interval: 'When conditions met',
-      lastMaintenance: '2024-12-28',
-      nextMaintenance: '2025-01-28',
-      status: 'Active',
-      conditions: {
-        runningHours: 750,
-        temperature: 80,
-        vibration: 3.0,
-      },
-    },
-    {
-      id: 'PM-004',
-      machineId: 'M-004',
-      machineName: 'Extruder #4',
-      scheduleType: 'Time-based',
-      interval: 'Every 1000 hours',
-      lastMaintenance: '2025-01-08',
-      nextMaintenance: '2025-02-08',
-      status: 'Active',
-    },
-    {
-      id: 'PM-005',
-      machineId: 'M-005',
-      machineName: 'Extruder #5',
-      scheduleType: 'Condition-based',
-      interval: 'When conditions met',
-      lastMaintenance: '2025-01-05',
-      nextMaintenance: 'Condition-based',
-      status: 'Paused',
-      conditions: {
-        runningHours: 500,
-        cycleCount: 10000,
-        temperature: 85,
-      },
-    },
-    {
-      id: 'PM-006',
-      machineId: 'M-006',
-      machineName: 'Welding Machine #6',
-      scheduleType: 'Time-based',
-      interval: 'Every 30 days',
-      lastMaintenance: '2025-01-15',
-      nextMaintenance: '2025-02-15',
-      status: 'Active',
-    },
-  ];
+  const { data: apiResponse, isLoading } = useSWR('/api/maintenance/scheduled', fetcher);
+  const machines = apiResponse?.success ? apiResponse.data : [];
 
-  const getDaysUntil = (date: string) => {
-    if (date === 'Condition-based') return null;
+  // Get unique lines for filter
+  const uniqueLines = useMemo(() => {
+    const lines = new Map();
+    machines.forEach((m: any) => {
+      if (m.line_id && m.line_name) {
+        lines.set(m.line_id, m.line_name);
+      }
+    });
+    return Array.from(lines.entries()).map(([id, name]) => ({ id, name }));
+  }, [machines]);
+
+  // Filter and search logic
+  const filteredMachines = useMemo(() => {
+    return machines.filter((machine: any) => {
+      const matchesSearch = machine.name_machine.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           machine.id.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesLine = lineFilter === 'all' || machine.line_id === lineFilter;
+      return matchesSearch && matchesLine;
+    });
+  }, [machines, searchTerm, lineFilter]);
+
+  const getDaysUntil = (date: string | Date | null) => {
+    if (!date) return null;
     const today = new Date();
     const target = new Date(date);
     const diffTime = target.getTime() - today.getTime();
@@ -92,198 +104,179 @@ export default function MaintenanceSchedule() {
     return diffDays;
   };
 
-  const getUrgencyColor = (days: number | null) => {
-    if (days === null) return 'bg-gray-100 text-gray-700';
-    if (days < 0) return 'bg-red-100 text-red-700';
-    if (days <= 7) return 'bg-orange-100 text-orange-700';
-    if (days <= 14) return 'bg-yellow-100 text-yellow-700';
-    return 'bg-green-100 text-green-700';
+  const formatMaintenanceDate = (date: string | Date | null) => {
+    if (!date) return 'Not Scheduled';
+    return new Date(date).toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+    <div className="space-y-6">
+      {/* Header & Main Actions */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Preventive Maintenance Schedule</h2>
-          <p className="text-xs text-gray-500">Manage automated maintenance schedules</p>
+          <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">Schedule Maintenance</h2>
+          <p className="text-xs text-slate-500 font-medium">Monitor and manage machine maintenance cycles</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all font-bold text-sm shadow-md shadow-indigo-100"
         >
-          <Plus size={16} />
-          New Schedule
+          <Plus size={18} />
+          Add Schedule
         </button>
       </div>
 
-      {/* Schedule Types Info */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-blue-600 rounded-md">
-              <Clock className="text-white" size={18} />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 text-sm mb-1">Time-based Maintenance</h3>
-              <p className="text-xs text-gray-700">
-                Scheduled at fixed intervals (hours, days, or cycles) regardless of machine condition.
-              </p>
-              <p className="text-xs text-blue-700 mt-1 font-medium">
-                Active schedules: {schedules.filter(s => s.scheduleType === 'Time-based' && s.status === 'Active').length}
-              </p>
-            </div>
-          </div>
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <input
+            type="text"
+            placeholder="Search machine name or ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
+          />
         </div>
-
-        <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-green-600 rounded-md">
-              <AlertCircle className="text-white" size={18} />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 text-sm mb-1">Condition-based Maintenance</h3>
-              <p className="text-xs text-gray-700">
-                Triggered when machine conditions exceed predefined thresholds (temperature, vibration, etc.)
-              </p>
-              <p className="text-xs text-green-700 mt-1 font-medium">
-                Active schedules: {schedules.filter(s => s.scheduleType === 'Condition-based' && s.status === 'Active').length}
-              </p>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 min-w-[200px]">
+          <Filter size={16} className="text-slate-400" />
+          <select 
+            value={lineFilter}
+            onChange={(e) => setLineFilter(e.target.value)}
+            className="bg-transparent border-none focus:ring-0 text-sm font-semibold text-slate-700 w-full outline-none"
+          >
+            <option value="all">All Lines</option>
+            {uniqueLines.map(line => (
+              <option key={line.id} value={line.id}>{line.name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* Schedule Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {schedules.map((schedule) => {
-          const daysUntil = getDaysUntil(schedule.nextMaintenance);
+      {isLoading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+        </div>
+      ) : filteredMachines.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-dashed border-slate-200">
+          <div className="p-4 bg-slate-50 rounded-full mb-4">
+            <Search size={32} className="text-slate-300" />
+          </div>
+          <h3 className="text-slate-900 font-bold">No machines found</h3>
+          <p className="text-slate-500 text-sm">Try adjusting your search or filters</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredMachines.map((machine: any) => {
+            const daysUntil = getDaysUntil(machine.next_maintenance);
+            const isCritical = daysUntil !== null && daysUntil <= 7;
+            const statusCfg = getStatusConfig(machine.status);
+            const StatusIcon = statusCfg.icon;
 
-          return (
-            <div
-              key={schedule.id}
-              className={`bg-white rounded-lg shadow-sm border p-4 ${schedule.status === 'Active' ? 'border-gray-200' : 'border-gray-300 opacity-70'
+            return (
+              <div
+                key={machine.id}
+                className={`group bg-white rounded-2xl shadow-sm border p-5 transition-all hover:shadow-xl hover:-translate-y-1 ${
+                  isCritical ? 'border-orange-200 ring-2 ring-orange-100' : 'border-slate-100'
                 }`}
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="font-bold text-sm text-gray-900">{schedule.machineName}</h3>
-                  <p className="text-xs text-gray-600">{schedule.machineId}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {schedule.status === 'Active' ? (
-                    <Play className="text-green-600" size={20} />
-                  ) : (
-                    <Pause className="text-gray-600" size={20} />
-                  )}
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${schedule.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                    {schedule.status}
-                  </span>
-                </div>
-              </div>
-
-              {/* Schedule Type */}
-              <div className="mb-3 pb-3 border-b border-gray-200">
-                <div className="flex items-center gap-1.5 mb-1">
-                  {schedule.scheduleType === 'Time-based' ? (
-                    <Clock className="text-blue-600" size={14} />
-                  ) : (
-                    <AlertCircle className="text-green-600" size={14} />
-                  )}
-                  <span className="text-xs font-semibold text-gray-700">{schedule.scheduleType}</span>
-                </div>
-                <p className="text-xs text-gray-600">{schedule.interval}</p>
-              </div>
-
-              {/* Dates */}
-              <div className="space-y-2 mb-3">
-                <div>
-                  <p className="text-xs text-gray-500">Last Maintenance</p>
-                  <p className="text-xs font-semibold text-gray-900">
-                    {new Date(schedule.lastMaintenance).toLocaleDateString('id-ID', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric'
-                    })}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-gray-500">Next Maintenance</p>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-gray-900">
-                      {schedule.nextMaintenance === 'Condition-based' ? (
-                        'Condition-based'
-                      ) : (
-                        new Date(schedule.nextMaintenance).toLocaleDateString('id-ID', {
-                          day: 'numeric',
-                          month: 'long',
-                          year: 'numeric'
-                        })
-                      )}
-                    </p>
-                    {daysUntil !== null && (
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getUrgencyColor(daysUntil)}`}>
-                        {daysUntil < 0 ? 'Overdue' : daysUntil === 0 ? 'Today' : `${daysUntil}d`}
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                       <h3 className="font-bold text-slate-900 text-base group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{machine.name_machine}</h3>
+                       <span className={`flex h-2 w-2 rounded-full ${statusCfg.dot} ${machine.status === 'active' ? 'animate-pulse' : ''}`}></span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-bold">
+                        {machine.id.substring(0, 8)}
                       </span>
-                    )}
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400">
+                        <Box size={10} />
+                        {machine.line_name}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-violet-500 bg-violet-50 px-2 py-0.5 rounded-full">
+                        <Settings size={10} />
+                        {machine.process_name}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={`p-2 rounded-xl transition-all ${statusCfg.bg} ${statusCfg.color}`}>
+                    <StatusIcon size={18} />
                   </div>
                 </div>
-              </div>
 
-              {/* Conditions */}
-              {schedule.conditions && (
-                <div className="bg-gray-50 rounded-lg p-3 mb-4">
-                  <p className="text-xs font-semibold text-gray-700 mb-2">Trigger Conditions:</p>
-                  <div className="space-y-1 text-xs text-gray-600">
-                    {schedule.conditions.runningHours && (
-                      <div className="flex justify-between">
-                        <span>Running Hours:</span>
-                        <span className="font-semibold">&gt;{schedule.conditions.runningHours}h</span>
-                      </div>
-                    )}
-                    {schedule.conditions.cycleCount && (
-                      <div className="flex justify-between">
-                        <span>Cycle Count:</span>
-                        <span className="font-semibold">&gt;{schedule.conditions.cycleCount.toLocaleString()}</span>
-                      </div>
-                    )}
-                    {schedule.conditions.temperature && (
-                      <div className="flex justify-between">
-                        <span>Temperature:</span>
-                        <span className="font-semibold">&gt;{schedule.conditions.temperature}°C</span>
-                      </div>
-                    )}
-                    {schedule.conditions.vibration && (
-                      <div className="flex justify-between">
-                        <span>Vibration:</span>
-                        <span className="font-semibold">&gt;{schedule.conditions.vibration} mm/s</span>
-                      </div>
-                    )}</div>
+                {/* Status Bar */}
+                <div className="mb-4">
+                   <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Current State</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusCfg.bg} ${statusCfg.color}`}>
+                        {statusCfg.label.toUpperCase()}
+                      </span>
+                   </div>
+                   <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div className={`h-full transition-all duration-1000 ${statusCfg.dot.replace('bg-', 'bg-')}`} style={{ width: machine.status === 'inactive' ? '0%' : '100%' }}></div>
+                   </div>
                 </div>
-              )}
 
-              {/* Actions */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedSchedule(schedule)}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-xs font-medium"
-                >
-                  <Edit size={12} />
-                  Edit
-                </button>
-                <button
-                  className="flex-1 px-2 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition-colors text-xs font-medium"
-                >
-                  {schedule.status === 'Active' ? 'Pause' : 'Activate'}
-                </button>
+                {/* Urgency Alert Message */}
+                {daysUntil !== null && (
+                  <div className={`mb-4 p-3 rounded-xl flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 duration-500 ${
+                    daysUntil < 0 ? 'bg-rose-50 text-rose-700 border border-rose-100' : 
+                    daysUntil <= 7 ? 'bg-orange-50 text-orange-700 border border-orange-100' : 
+                    'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                  }`}>
+                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                    <p className="text-[11px] font-bold leading-relaxed">
+                      {daysUntil < 0 ? (
+                        `OVERDUE: Maintenance was required ${Math.abs(daysUntil)} days ago!`
+                      ) : daysUntil === 0 ? (
+                        "ACTION REQUIRED: Maintenance is scheduled for TODAY!"
+                      ) : daysUntil <= 7 ? (
+                        `${daysUntil} days left or on ${formatMaintenanceDate(machine.next_maintenance)} maintenance must be performed.`
+                      ) : (
+                        `Next cycle scheduled in ${daysUntil} days.`
+                      )}
+                    </p>
+                  </div>
+                )}
+
+                {/* Info Grid */}
+                <div className="grid grid-cols-2 gap-4 mb-5 p-3 bg-slate-50/50 rounded-xl border border-slate-100">
+                  <div>
+                    <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black mb-1">Last Maintenance</p>
+                    <p className="text-xs font-bold text-slate-800">{formatMaintenanceDate(machine.last_maintenance)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[9px] text-slate-400 uppercase tracking-widest font-black mb-1">Next Maintenance</p>
+                    <p className="text-xs font-bold text-indigo-600">{formatMaintenanceDate(machine.next_maintenance)}</p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSelectedSchedule(machine)}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all text-xs font-bold shadow-lg shadow-indigo-100 active:scale-95"
+                  >
+                    <Settings size={14} />
+                    Manage
+                  </button>
+                  <button
+                    className="flex items-center justify-center px-3 py-2.5 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 transition-all text-xs font-bold active:scale-95"
+                  >
+                    <MapPin size={14} />
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modals */}
       {showForm && <PreventiveMaintenanceForm onClose={() => setShowForm(false)} />}

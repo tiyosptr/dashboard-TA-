@@ -71,9 +71,10 @@ export default function WorkOrderForm({ onClose }: WorkOrderFormProps) {
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
               >
-                <option value="Preventive">Preventive Maintenance</option>
-                <option value="Corrective">Corrective Maintenance</option>
-                <option value="Inspection">Inspection</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="downtime">Downtime</option>
+                <option value="repair">Repair</option>
+                <option value="on hold">On Hold</option>
               </select>
             </div>
 

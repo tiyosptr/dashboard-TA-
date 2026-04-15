@@ -51,6 +51,8 @@ model Line {
   workOrders    WorkOrder[]
   partNumbers   Pn[]
   oeeSummaries  OeeSummary[]
+  cycleTimes    CycleTimeMachine[]
+  troughputs    TroughputMachine[]
 
   @@map("line")
 }
@@ -65,6 +67,8 @@ model LineProcess {
   line      Line       @relation(fields: [lineId], references: [id])
   process   Process    @relation(fields: [processId], references: [id])
   dataItems DataItem[]
+  cycleTimes CycleTimeMachine[]
+  troughputs TroughputMachine[]
 
   @@map("line_process")
 }
@@ -83,6 +87,8 @@ model Machine {
   workOrders     WorkOrder[]
   statusLogs     MachineStatusLog[]
   oeeSummaries   OeeSummary[]
+  cycleTimes     CycleTimeMachine[]
+  troughputs     TroughputMachine[]
 
   @@map("machine")
 }
@@ -97,6 +103,7 @@ model MachineStatusLog {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  cycleTimes CycleTimeMachine[]
 
   @@index([machineId], name: "idx_msl_machine_open")
   @@map("machine_status_log")
@@ -171,6 +178,7 @@ model Shift {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   oeeSummaries OeeSummary[]
+  cycleTimes   CycleTimeMachine[]
 
   @@map("shift")
 }
@@ -234,6 +242,42 @@ model WorkOrder {
   notifications Notification[]
 
   @@map("work_order")
+}
+
+model CycleTimeMachine {
+  id                 String    @id @db.Uuid
+  shiftId            String?   @map("shift_id") @db.Uuid
+  machineId          String?   @map("machine_id") @db.Uuid
+  lineId             String?   @map("line_id") @db.Uuid
+  lineProcessId      String?   @map("line_process_id") @db.Uuid
+  totalOutput        BigInt?   @map("total_output")
+  actualCycleTime    Decimal?  @map("actual_cycle_time") @db.Decimal
+  idMachineStatusLog String?   @map("id_machine_status_log") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  shift            Shift?            @relation(fields: [shiftId], references: [id])
+  machine          Machine?          @relation(fields: [machineId], references: [id])
+  line             Line?             @relation(fields: [lineId], references: [id])
+  lineProcess      LineProcess?      @relation(fields: [lineProcessId], references: [id])
+  machineStatusLog MachineStatusLog? @relation(fields: [idMachineStatusLog], references: [id])
+
+  @@map("cycle_time_machine")
+}
+
+model TroughputMachine {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  troughput     Decimal? @db.Decimal
+  totalPass     BigInt?  @map("total_pass")
+  intervalTime  BigInt?  @map("interval_time")
+  machineId     String?  @map("machine_id") @db.Uuid
+  lineId        String?  @map("line_id") @db.Uuid
+  lineProcessId String?  @map("line_process_id") @db.Uuid
+
+  machine     Machine?     @relation(fields: [machineId], references: [id])
+  line        Line?        @relation(fields: [lineId], references: [id])
+  lineProcess LineProcess? @relation(fields: [lineProcessId], references: [id])
+
+  @@map("troughput_machine")
 }
 
 model OeeSummary {

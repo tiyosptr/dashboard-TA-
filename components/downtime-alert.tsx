@@ -23,7 +23,7 @@ export default function DowntimeAlert({ selectedLineId }: { selectedLineId?: str
           const activeAlerts = result.data
             .filter((n: Notification) =>
               (!n.done_at || n.done_at === '' || n.done_at === null) &&
-              n.type === 'Downtime'
+              n.type?.toLowerCase() === 'downtime'
             )
             .slice(0, 3);
 

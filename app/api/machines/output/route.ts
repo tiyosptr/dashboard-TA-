@@ -93,35 +93,48 @@ export async function GET(request: NextRequest) {
 
         // ── 5. Build UTC time range based on shift + date ──────────────
         const [year, month, day] = wibDateStr.split('-').map(Number)
-        let rangeStartUtc: Date
-        let rangeEndUtc: Date
+        let rangeStartUtc: Date;
+        let rangeEndUtc: Date;
 
         if (activeShift) {
-            const startH = parseInt(activeShift.start_time.split(':')[0], 10)
-            const startM = parseInt(activeShift.start_time.split(':')[1], 10)
-            const endH = parseInt(activeShift.end_time.split(':')[0], 10)
-            const endM = parseInt(activeShift.end_time.split(':')[1], 10)
-            const isOvernight = endH < startH || (endH === startH && endM <= startM)
+            const startH = parseInt(activeShift.start_time.split(':')[0], 10);
+            const startM = parseInt(activeShift.start_time.split(':')[1], 10);
+            const endH = parseInt(activeShift.end_time.split(':')[0], 10);
+            const endM = parseInt(activeShift.end_time.split(':')[1], 10);
+            const isOvernight = endH < startH || (endH === startH && endM <= startM);
+
+            let shiftStartDay = day;
+            let shiftEndDay = day;
 
             if (isOvernight) {
-                // Overnight shift (e.g. 23:00–07:00):
-                // If user picks date "2026-03-11" with SHIFT-3, it means the shift
-                // that covers the night of 10→11 March: starts 10 March 23:00, ends 11 March 07:00.
-                // So start day is ALWAYS day - 1 for overnight shifts.
-                const shiftStartDay = day - 1
-
-                rangeStartUtc = new Date(Date.UTC(year, month - 1, shiftStartDay, startH, startM, 0, 0))
-                rangeStartUtc.setUTCHours(rangeStartUtc.getUTCHours() - 7)
-
-                rangeEndUtc = new Date(Date.UTC(year, month - 1, shiftStartDay + 1, endH, endM, 0, 0))
-                rangeEndUtc.setUTCHours(rangeEndUtc.getUTCHours() - 7)
+                const wibNow = new Date(new Date().getTime() + 7 * 60 * 60 * 1000);
+                if (year === wibNow.getUTCFullYear() && month === wibNow.getUTCMonth() + 1 && day === wibNow.getUTCDate()) {
+                    const currentWibH = wibNow.getUTCHours();
+                    const currentWibM = wibNow.getUTCMinutes();
+                    const currentMinutes = currentWibH * 60 + currentWibM;
+                    const startMinutes = startH * 60 + startM;
+                    
+                    if (currentMinutes < startMinutes) {
+                        shiftStartDay = day - 1;
+                        shiftEndDay = day;
+                    } else {
+                        shiftStartDay = day;
+                        shiftEndDay = day + 1;
+                    }
+                } else {
+                    shiftStartDay = day;
+                    shiftEndDay = day + 1;
+                }
             } else {
-                rangeStartUtc = new Date(Date.UTC(year, month - 1, day, startH, startM, 0, 0))
-                rangeStartUtc.setUTCHours(rangeStartUtc.getUTCHours() - 7)
-
-                rangeEndUtc = new Date(Date.UTC(year, month - 1, day, endH, endM, 0, 0))
-                rangeEndUtc.setUTCHours(rangeEndUtc.getUTCHours() - 7)
+                shiftStartDay = day;
+                shiftEndDay = day;
             }
+
+            rangeStartUtc = new Date(Date.UTC(year, month - 1, shiftStartDay, startH, startM, 0, 0));
+            rangeStartUtc.setUTCHours(rangeStartUtc.getUTCHours() - 7);
+
+            rangeEndUtc = new Date(Date.UTC(year, month - 1, shiftEndDay, endH, endM, 0, 0));
+            rangeEndUtc.setUTCHours(rangeEndUtc.getUTCHours() - 7);
         } else {
             rangeStartUtc = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0))
             rangeStartUtc.setUTCHours(rangeStartUtc.getUTCHours() - 7)

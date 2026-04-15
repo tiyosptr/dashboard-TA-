@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from('notification')
       .select('*')
-      .order('start_at', { ascending: false });
+      .order('start_at', { ascending: false })
+      .limit(50);
 
     // If lineId is provided, only fetch notifications for machines/processes on that line
     if (lineId) {
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
     const { machineId, machineName, reason, severity = 'high', processId } = body;
 
     const notificationData = {
-      type: 'Downtime',
+      type: 'downtime',
       severity: severity,
       machine_id: machineId || null,
       machine_name: machineName,
@@ -114,6 +115,21 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // Change machine status to downtime if reason/type indicates downtime
+    if (machineId && notificationData.type === 'downtime') {
+      try {
+        const url = new URL(request.url);
+        const statusChangeUrl = `${url.protocol}//${url.host}/api/machines/status-change`;
+        await fetch(statusChangeUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ machine_id: machineId, new_status: 'downtime' })
+        });
+      } catch (statusErr) {
+        console.error('Failed to update machine status to downtime:', statusErr);
+      }
+    }
 
     return NextResponse.json({
       success: true,

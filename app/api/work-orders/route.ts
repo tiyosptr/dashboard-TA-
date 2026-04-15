@@ -20,12 +20,13 @@ export async function GET(request: NextRequest) {
     const workOrders = await prisma.workOrder.findMany({
       where,
       include: {
-        machine: true,
-        line: true,
+        machine: { select: { id: true, nameMachine: true } },
+        line: { select: { id: true, name: true } },
         notes: true,
-        tasks: true,
+        tasks: { select: { id: true, workOrderId: true, description: true, completed: true, completedAt: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: 150, // Added upper bound for massive performance boost
     })
 
     // Map Prisma camelCase to snake_case for frontend compatibility
@@ -130,7 +131,7 @@ export async function PUT(request: NextRequest) {
       },
     })
 
-    // When work order is completed, update the related notification's done_at
+    // When work order is completed, update the related notification's done_at and create a history record
     if (rest.status === 'Completed') {
       try {
         const doneAt = new Date().toISOString();
@@ -148,8 +149,103 @@ export async function PUT(request: NextRequest) {
           .select('id');
 
         console.log('[WO Complete] Notifications marked done by work_order_id:', { id, updated, notifErr });
+
+        // Resolve Technician ID
+        let technicianId = null;
+        if (workOrder.assignedTo) {
+          const tech = await prisma.technician.findFirst({
+            where: { name: workOrder.assignedTo }
+          });
+          if (tech) technicianId = tech.id;
+        }
+
+        // Resolve Line ID if missing
+        let lineId = workOrder.lineId;
+        if ((!lineId || lineId === '00000000-0000-0000-0000-000000000000') && workOrder.machineId) {
+          const pr = await prisma.process.findFirst({ where: { machineId: workOrder.machineId }});
+          if (pr?.id) {
+            const lp = await prisma.lineProcess.findFirst({ where: { processId: pr.id }});
+            if (lp?.lineId) lineId = lp.lineId;
+          }
+        }
+
+        // Find current open Machine Status Log
+        let machineStatusLogId = null;
+        if (workOrder.machineId) {
+          const openLog = await prisma.machineStatusLog.findFirst({
+            where: { machineId: workOrder.machineId, endTime: null },
+            orderBy: { startTime: 'desc' }
+          });
+          if (openLog) machineStatusLogId = openLog.id;
+        }
+
+        // Add history record
+        let durationSeconds = 0;
+        if (workOrder.createdAt && workOrder.completedAt) {
+          durationSeconds = Math.floor((workOrder.completedAt.getTime() - workOrder.createdAt.getTime()) / 1000);
+        }
+
+        const validTypes = ['maintenance', 'downtime', 'on hold', 'repair'];
+        let eventType = (workOrder.type || '').toLowerCase();
+        if (!validTypes.includes(eventType)) {
+          eventType = 'maintenance';
+        }
+
+        const { error: historyErr } = await supabaseAdmin
+          .from('work_order_history')
+          .insert({
+            work_order_id: workOrder.id,
+            machine_id: workOrder.machineId,
+            line_id: lineId || null,
+            machine_status_log_id: machineStatusLogId,
+            technician_id: technicianId,
+            event_type: eventType,
+            event_start: workOrder.createdAt ? workOrder.createdAt.toISOString() : doneAt,
+            event_end: doneAt,
+            duration_seconds: durationSeconds,
+            work_order_status: 'Completed',
+            priority: workOrder.priority,
+            assigned_to: workOrder.assignedTo,
+            work_order_code: workOrder.workOrderCode,
+            description: workOrder.description,
+            is_resolved: true,
+            resolved_at: doneAt,
+            resolved_by: workOrder.assignedTo,
+          });
+
+        if (historyErr) {
+          console.error('[WO Complete] Error inserting work_order_history:', historyErr);
+        } else {
+          console.log('[WO Complete] Work order history recorded for:', workOrder.id);
+        }
+
+        // 3. Reactivate machine if the completed work order was for downtime
+        if (eventType === 'downtime' && workOrder.machineId) {
+          try {
+             // Let's directly construct the payload and fetch using nextUrl.origin to ensure NO IP/port mismatch issues
+             const baseUrl = request.nextUrl.origin;
+             const statusChangeUrl = `${baseUrl}/api/machines/status-change`;
+             console.log('[WO Complete] Calling status-change endpoint:', statusChangeUrl);
+             
+             const scRes = await fetch(statusChangeUrl, {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ machine_id: workOrder.machineId, new_status: 'active' })
+             });
+             
+             const scData = await scRes.json();
+             if (!scRes.ok) {
+               console.error('[WO Complete] status-change error response:', scData);
+             } else {
+               console.log('[WO Complete] Machine status reverted to active for:', workOrder.machineId);
+             }
+          } catch (statusErr) {
+            console.error('[WO Complete] Failed to update machine status:', statusErr);
+          }
+        }
+
       } catch (notifError) {
-        console.error('[WO Complete] Error updating notification done_at:', notifError);
+        console.error('[WO Complete] Error updating completion logic:', notifError);
       }
     }
 
@@ -170,11 +266,35 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 })
     }
 
+    // To prevent Foreign Key constraint errors on WorkOrder deletion
+    // 1. We drop the FK constraint on work_order_history to keep history intact while WO goes away
+    try {
+      await prisma.$executeRawUnsafe('ALTER TABLE public.work_order_history DROP CONSTRAINT IF EXISTS work_order_history_work_order_id_fkey;');
+    } catch(e) {
+      console.warn("Could not drop constraint (might already be dropped):", e);
+    }
+
+    // 2. Detach notifications from this work order so they don't block deletion
+    try {
+      await prisma.$executeRawUnsafe('UPDATE public.notification SET work_order_id = NULL WHERE work_order_id = $1::uuid', id);
+    } catch(e) {
+      console.warn("Could not detach notifications:", e);
+    }
+
+    // 3. Delete dependent records that we don't need to keep (tasks, notes)
+    try {
+       await prisma.task.deleteMany({ where: { workOrderId: id } });
+       await prisma.note.deleteMany({ where: { workOrderId: id } });
+    } catch (e) {
+       console.warn("Error deleting sub-records for WO:", e);
+    }
+
+    // 4. Finally delete the work order itself
     await prisma.workOrder.delete({
       where: { id },
     })
 
-    return NextResponse.json({ message: 'Work order deleted successfully' })
+    return NextResponse.json({ success: true, message: 'Work order deleted successfully' })
   } catch (error) {
     console.error('Error deleting work order:', error)
     return NextResponse.json({ error: 'Failed to delete work order' }, { status: 500 })

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import useSWR, { preload } from 'swr';
+import useSWR, { preload, mutate } from 'swr';
 import {
   Search, Activity, AlertTriangle, CheckCircle, Wrench,
   TrendingUp, TrendingDown, Zap, RefreshCw, Filter,
@@ -30,6 +30,8 @@ interface MachineData {
   last_maintenance: string | null;
   total_running_hours: string | null;
   total_downtime_hours: string | null;
+  real_cycle_time?: number | null;
+  real_throughput?: number | null;
   line_name: string | null;
   line_id: string | null;
   process_name: string | null;
@@ -90,6 +92,22 @@ function formatDurationFromHours(hoursStr: string | null): string {
   const m = Math.floor((totalSeconds % 3600) / 60);
 
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+// ─── Format cycle time (seconds per item) for display ───────────────
+function formatCycleTimeDisplay(val: number | null | undefined): string {
+  if (!val || val <= 0) return '0s';
+  if (val < 60) {
+    return `${val.toFixed(1)}s`;
+  }
+  const hours = Math.floor(val / 3600);
+  const remainingSecs = val % 3600;
+  const mins = Math.floor(remainingSecs / 60);
+  const secs = (remainingSecs % 60).toFixed(0);
+  if (hours > 0) {
+    return `${hours}h ${mins}m ${secs}s`;
+  }
+  return `${mins}m ${secs}s`;
 }
 
 // ─── Status Helpers ──────────────────────────────────────────────────
@@ -166,6 +184,33 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () =
   const oeeColor = metrics.oee >= 85 ? 'text-emerald-600' : metrics.oee >= 70 ? 'text-amber-600' : 'text-red-600';
   const oeeBarColor = metrics.oee >= 85 ? 'from-emerald-400 to-emerald-600' : metrics.oee >= 70 ? 'from-amber-400 to-amber-600' : 'from-red-400 to-red-600';
 
+  const todayWib = useMemo(() => {
+    const now = new Date();
+    const wib = new Date(now.getTime() + 7 * 3600000);
+    return wib.toISOString().split('T')[0];
+  }, []);
+
+  const outParams = new URLSearchParams({ machineId: machine.id, date: todayWib });
+  const outputQueryUrl = `/api/machines/output?${outParams.toString()}`;
+  const { data: outputRes } = useSWR(outputQueryUrl, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5000,
+  });
+  const outputApiData = outputRes?.data;
+
+  const defectParams = new URLSearchParams({ machineId: machine.id, date: todayWib });
+  const defectQueryUrl = `/api/machines/defect-rate?${defectParams.toString()}`;
+  const { data: defectRes } = useSWR(defectQueryUrl, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 5000,
+  });
+  const defectApiData = defectRes?.data;
+
+  const displayTotal = outputApiData?.total_output ?? metrics.output;
+  const displayPass = defectApiData?.totalPass ?? metrics.output;
+  const displayReject = defectApiData?.totalReject ?? metrics.reject;
+  const displayDefectRate = defectApiData?.defectRate ?? 0;
+
   return (
     <div
       onClick={onClick}
@@ -175,10 +220,8 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () =
           const wib = new Date(now.getTime() + 7 * 3600000);
           return wib.toISOString().split('T')[0];
         })();
-        const params = new URLSearchParams({ machineId: machine.id, date: todayWib });
-        preload(`/api/machines/output?${params.toString()}`, fetcher);
-        const ctParams = new URLSearchParams({ machineId: machine.id });
-        preload(`/api/machines/cycle-time?${ctParams.toString()}`, fetcher);
+        // Preload unified dashboard endpoint
+        preload(`/api/machines/${machine.id}/dashboard-machine?date=${todayWib}`, fetcher);
       }}
       className={`group relative bg-white rounded-2xl border ${config.border} shadow-sm hover:shadow-xl 
                 transition-all duration-300 cursor-pointer hover:-translate-y-1 overflow-hidden`}
@@ -243,14 +286,31 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () =
 
         {/* Metrics Grid */}
         <div className="grid grid-cols-3 gap-2 mb-3">
-          <MetricCell label="Output" value={metrics.output.toLocaleString('id-ID')} unit="pcs" color="text-blue-600" />
-          <MetricCell label="Throughput" value={metrics.throughput.toString()} unit="/hr" color="text-purple-600" />
-          <MetricCell label="Cycle Time" value={`${metrics.cycleTime}s`} unit="" color="text-teal-600" />
+          <MetricCell label="Output" value={displayTotal.toLocaleString('id-ID')} unit="pcs" color="text-blue-600" />
+          <MetricCell
+            label="Throughput"
+            value={machine.real_throughput !== undefined && machine.real_throughput !== null
+              ? (machine.real_throughput < 1 ? (machine.real_throughput * 60).toFixed(1) : machine.real_throughput.toFixed(1))
+              : metrics.throughput.toString()}
+            unit={machine.real_throughput !== undefined && machine.real_throughput !== null
+              ? (machine.real_throughput < 1 ? "/min" : "/s")
+              : "/hr"}
+            color="text-purple-600"
+          />
+          <MetricCell
+            label="Cycle Time"
+            value={machine.real_cycle_time !== undefined && machine.real_cycle_time !== null
+              ? formatCycleTimeDisplay(machine.real_cycle_time)
+              : formatCycleTimeDisplay(metrics.cycleTime)}
+            unit=""
+            color="text-teal-600"
+          />
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <MetricCell label="Quality" value={`${metrics.quality}%`} unit="" color="text-emerald-600" />
-          <MetricCell label="Reject" value={metrics.reject.toString()} unit="pcs" color="text-rose-600" />
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <MetricCell label="Pass" value={displayPass.toLocaleString('id-ID')} unit="pcs" color="text-emerald-600" />
+          <MetricCell label="Reject" value={displayReject.toLocaleString('id-ID')} unit="pcs" color="text-rose-600" />
+          <MetricCell label="Defect Rate" value={`${displayDefectRate}%`} unit="" color="text-rose-600" />
         </div>
 
 
@@ -310,39 +370,37 @@ function MachineDetailModal({
   const [selectedDate, setSelectedDate] = useState(todayWib);
   const [selectedShiftId, setSelectedShiftId] = useState<string>('');
 
-  // ── SWR Data Fetching ───────────────────────────────────────
-  
-  const outputParams = new URLSearchParams({ machineId: machine.id, date: selectedDate });
-  if (selectedShiftId) outputParams.set('shiftId', selectedShiftId);
-  const outputQueryUrl = `/api/machines/output?${outputParams.toString()}`;
+  // ── SWR Data Fetching (UNIFIED SINGLE ENDPOINT) ──────────────
+  const dashboardParams = new URLSearchParams({ date: selectedDate });
+  if (selectedShiftId) dashboardParams.set('shiftId', selectedShiftId);
+  const dashboardUrl = `/api/machines/${machine.id}/dashboard-machine?${dashboardParams.toString()}`;
 
-  const ctParams = new URLSearchParams({ machineId: machine.id });
-  if (selectedShiftId) ctParams.set('shiftId', selectedShiftId);
-  const ctQueryUrl = `/api/machines/cycle-time?${ctParams.toString()}`;
-
-  const { data: outputRes, error: outputError, isLoading: outputLoading } = useSWR(
-    outputQueryUrl,
+  const { data: dashboardRes, isLoading: dashboardLoading } = useSWR(
+    dashboardUrl,
     fetcher,
     { keepPreviousData: true, revalidateOnFocus: false }
   );
 
-  const { data: ctRes, error: ctError, isLoading: cycleTimeLoading } = useSWR(
-    ctQueryUrl,
-    fetcher,
-    { keepPreviousData: true, revalidateOnFocus: false }
-  );
-
-  const outputApiData = outputRes?.success ? outputRes.data : null;
-  const cycleTimeApiData = ctRes?.success && ctRes?.data ? {
-    total_output: ctRes.data.total_output ?? 0,
-    actual_cycle_time: ctRes.data.actual_cycle_time,
+  const dashData = dashboardRes?.success ? dashboardRes.data : null;
+  const outputApiData = dashData?.output ?? null;
+  const cycleTimeApiData = dashData?.cycleTime ? {
+    total_output: dashData.cycleTime.total_output ?? 0,
+    actual_cycle_time: dashData.cycleTime.actual_cycle_time,
   } : null;
+  const throughputApiData = dashData?.throughput ?? null;
+  const defectApiData = dashData?.defectRate ?? null;
+  const ctHistoryRes = { data: dashData?.cycleTimeHistory ?? [] };
+
+  // Backward-compatible loading flags
+  const outputLoading = dashboardLoading;
+  const cycleTimeLoading = dashboardLoading;
+  const tpLoading = dashboardLoading;
 
   useEffect(() => {
-    if (!selectedShiftId && outputApiData?.shift) {
-      setSelectedShiftId(outputApiData.shift.id);
+    if (!selectedShiftId && dashData?.shift) {
+      setSelectedShiftId(dashData.shift.id);
     }
-  }, [outputApiData?.shift, selectedShiftId]);
+  }, [dashData?.shift, selectedShiftId]);
 
   const handleStatusChange = async (newStatus: string) => {
     if (machine.status === newStatus || isUpdating) return;
@@ -369,6 +427,39 @@ function MachineDetailModal({
     }
   };
 
+  // ── Real-time Subscription (Custom WebSocket Server) ────────
+  useEffect(() => {
+    if (!machine.id) return;
+
+    const socket = new WebSocket('ws://localhost:3001');
+
+    socket.onopen = () => {
+      console.log(`[ws] Connected to server | Machine: ${machine.id}`);
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.machine_id && data.machine_id !== machine.id) return;
+
+        // Single mutation for the unified endpoint
+        if (['CYCLE_TIME_UPDATE', 'THROUGHPUT_UPDATE', 'OUTPUT_UPDATE', 'DEFECT_RATE_UPDATE'].includes(data.type)) {
+          mutate(dashboardUrl);
+        }
+      } catch (err) {
+        console.error('[ws] Parse error:', err);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log('[ws] Disconnected from server');
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [machine.id, dashboardUrl]);
+
   const config = getStatusConfig(machine.status);
   const metrics = useMemo(() => generateMetrics(machine), [machine]);
   const StatusIcon = config.icon;
@@ -379,8 +470,16 @@ function MachineDetailModal({
   const displayReject = hasRealData ? (outputApiData?.totalReject ?? 0) : metrics.reject;
   const displayTotal = hasRealData ? (outputApiData?.totalProduced ?? 0) : (metrics.output + metrics.reject);
   const displayTarget = hasRealData ? (outputApiData?.targetOutput ?? metrics.targetOutput) : metrics.targetOutput;
-  const activeShiftInfo = outputApiData?.shift ?? null;
-  const allShifts = outputApiData?.allShifts ?? [];
+  const activeShiftInfo = dashData?.shift ?? null;
+  const allShifts = dashData?.allShifts ?? [];
+
+  const defectRateValue = defectApiData?.defectRate ?? 0;
+
+  // ── Derived throughput values ───────────────────────────────────
+  const hasRealThroughput = (throughputApiData !== null) && !tpLoading;
+  const displayThroughput = hasRealThroughput
+    ? Number(throughputApiData.troughput)
+    : (machine.real_throughput ?? null);
 
   // ── Derived cycle time values ───────────────────────────────────
   const hasRealCycleTime = (cycleTimeApiData !== null) && !cycleTimeLoading;
@@ -392,14 +491,49 @@ function MachineDetailModal({
     : 0;
 
   // Format cycle time value for display (items per second)
-  const formatCTValue = (value: number | null): string => {
-    if (value === null || value <= 0) return '—';
-    // value is items/sec
-    if (value < 1) {
-      const perMinute = value * 60;
-      return `${perMinute.toFixed(2)}/minute`;
+  const formatCTValue = (val: number) => {
+    // val is total seconds per item
+    if (!val || val <= 0) return '0s';
+
+    if (val < 60) {
+      return `${val.toFixed(1)}s`;
     }
-    return `${value.toFixed(2)}/sec`;
+
+    const hours = Math.floor(val / 3600);
+    const remainingSecs = val % 3600;
+    const mins = Math.floor(remainingSecs / 60);
+    const secs = (remainingSecs % 60).toFixed(0);
+
+    if (hours > 0) {
+      return `${hours}h ${mins}m ${secs}s`;
+    }
+    return `${mins}m ${secs}s`;
+  };
+
+  // Help format cycle time chart Y-axis labels for duration
+  const formatDurationTicks = (val: number) => {
+    if (val === 0) return '0';
+    if (val < 60) return `${val}s`;
+    if (val < 3600) return `${(val / 60).toFixed(1)}m`;
+    return `${(val / 3600).toFixed(1)}h`;
+  };
+
+  // Help format throughput values dynamically
+  const formatThroughputValue = (val: number) => {
+    if (!val || val <= 0) return '0';
+    if (val < 1) {
+      // Jika sangat lambat per jam, coba per menit
+      const perMin = val * 60;
+      if (perMin < 1) return `${(perMin * 60).toFixed(2)}/hr`; // Fallback to hour if still tiny
+      return `${perMin.toFixed(1)}/min`;
+    }
+    if (val >= 3600) {
+      return `${(val / 3600).toFixed(1)}/s`;
+    }
+    if (val >= 60) {
+      return `${(val / 60).toFixed(1)}/min`;
+    }
+    return `${val.toFixed(0)}/hr`;
   };
 
   // ── Hourly chart data from API ───────────────────────────────────
@@ -407,29 +541,58 @@ function MachineDetailModal({
   const realOutputByHour = (outputApiData?.hourly ?? []).map((h: any) => h.pass);
   const realRejectByHour = (outputApiData?.hourly ?? []).map((h: any) => h.reject);
 
-  // Mock hourly data for other charts (throughput, quality, OEE)
+  // ── Real hourly data for charts ─────────────────────────────────
   const seedNum = machine.id.charCodeAt(0);
-  const throughputData = shiftHours.map((_: any, i: number) => Math.round(metrics.throughput * (0.7 + Math.cos(seedNum + i) * 0.3)));
-  const cycleTimeData = shiftHours.map((_: any, i: number) => {
-    // Use real cycle time as base if available, with slight variation per hour
-    const baseCT = hasRealCycleTime && cycleTimeApiData?.actual_cycle_time
-      ? cycleTimeApiData.actual_cycle_time
-      : metrics.cycleTime;
-    return +(baseCT * (0.85 + Math.sin(seedNum + i * 0.7) * 0.15)).toFixed(1);
+
+  // Throughput chart: using real hourly pass counts (units/hour)
+  const throughputData = shiftHours.map((_: any, i: number) => {
+    const hourData = (outputApiData?.hourly ?? [])[i];
+    return hourData ? hourData.pass : 0;
   });
-  const qualityData = shiftHours.map((_: any, i: number) => +(metrics.quality - Math.abs(Math.sin(seedNum + i)) * 3).toFixed(1));
+
+  // Cycle time chart: mapping historical records to shift hours
+  const shiftSlots = activeShiftInfo
+    ? activeShiftInfo.start_time < activeShiftInfo.end_time
+      ? Array.from({ length: parseInt(activeShiftInfo.end_time) - parseInt(activeShiftInfo.start_time) }, (_: any, i: number) => parseInt(activeShiftInfo.start_time) + i)
+      : [...Array.from({ length: 24 - parseInt(activeShiftInfo.start_time) }, (_: any, i: number) => parseInt(activeShiftInfo.start_time) + i), ...Array.from({ length: parseInt(activeShiftInfo.end_time) }, (_: any, i: number) => i)]
+    : Array.from({ length: 24 }, (_: any, i: number) => i);
+
+  // Hourly cycle time data (mapped to shift hours)
+  const cycleTimeData = shiftHours.map((_: any, i: number) => {
+    const slotHour = shiftSlots[i];
+    const recordsInHour = (ctHistoryRes?.data || []).filter((r: any) => {
+      const h = new Date(new Date(r.created_at).getTime() + 7 * 3600000).getUTCHours();
+      return h === slotHour;
+    });
+    return recordsInHour.length > 0 ? (recordsInHour[0].actual_cycle_time || 0) : 0;
+  });
+
+  // Hourly cycle time data (mapped to shift hours)
+  // v sekarang sudah dalam "Detik per Item" dari database
+  const cycleTimeLineData = cycleTimeData.map((v: number) => {
+    if (v <= 0) return 0;
+    // Karena sudah durasi detik, kita langsung ambil nilainya
+    return +v.toFixed(1);
+  });
+
+  // Quality & OEE charts
+  const defectRateData = shiftHours.map((_: any, i: number) => {
+    const hourData = (defectApiData?.hourly ?? [])[i];
+    return hourData ? hourData.defect_rate : 0;
+  });
   const oeeData = shiftHours.map((_: any, i: number) => Math.round(metrics.oee * (0.8 + Math.cos(seedNum + i * 0.5) * 0.2)));
 
   const chartTheme = {
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
     titleColor: '#fff',
     bodyColor: '#e2e8f0',
-    borderColor: 'rgba(99, 102, 241, 0.2)',
+    borderColor: 'rgba(99, 102, 241, 0.3)',
     borderWidth: 1,
     padding: 10,
-    cornerRadius: 8,
+    cornerRadius: 10,
     titleFont: { size: 11, weight: 'bold' as const },
     bodyFont: { size: 10 },
+    displayColors: false,
   };
 
   const makeLineChart = (label: string, data: number[], color: string, fillColor: string) => ({
@@ -438,28 +601,60 @@ function MachineDetailModal({
       datasets: [{
         label,
         data,
-        borderColor: color,
-        backgroundColor: fillColor,
-        borderWidth: 2,
+        borderColor: '#6366f1',
+        backgroundColor: (context: any) => {
+          const chart = context.chart;
+          const { ctx, chartArea } = chart;
+          if (!chartArea) return 'rgba(99, 102, 241, 0.08)';
+          const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          gradient.addColorStop(0, 'rgba(99, 102, 241, 0.2)');
+          gradient.addColorStop(1, 'rgba(99, 102, 241, 0.01)');
+          return gradient;
+        },
+        borderWidth: 2.5,
         fill: true,
         tension: 0.4,
-        pointRadius: 3,
+        pointRadius: 0,
         pointHoverRadius: 5,
-        pointBackgroundColor: '#fff',
-        pointBorderColor: color,
-        pointBorderWidth: 2,
+        pointHoverBackgroundColor: '#6366f1',
+        pointHoverBorderColor: '#fff',
+        pointHoverBorderWidth: 2,
       }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         legend: { display: false },
         tooltip: chartTheme,
       },
       scales: {
-        x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-        y: { grid: { color: 'rgba(226,232,240,0.5)' }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: {
+            font: { size: 9 },
+            color: '#94a3b8',
+            maxRotation: 45,
+            minRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 12
+          }
+        },
+        y: {
+          grid: { color: 'rgba(226, 232, 240, 0.5)' },
+          border: { display: false },
+          ticks: {
+            font: { size: 9 },
+            color: '#94a3b8',
+            callback: function (value: any) {
+              // Only apply duration formatting for Cycle Time chart
+              // We'll pass a flag or handle it in the specific usage
+              return value;
+            }
+          }
+        },
       },
     },
   });
@@ -537,8 +732,9 @@ function MachineDetailModal({
   };
 
   const throughputChart = makeLineChart('Throughput', throughputData, '#8b5cf6', 'rgba(139, 92, 246, 0.1)');
-  const cycleTimeChart = makeLineChart('Cycle Time', cycleTimeData, '#14b8a6', 'rgba(20, 184, 166, 0.1)');
-  const qualityChart = makeLineChart('Quality', qualityData, '#10b981', 'rgba(16, 185, 129, 0.1)');
+  const cycleTimeChart = makeLineChart('Cycle Time (s)', cycleTimeLineData, '#14b8a6', 'rgba(20, 184, 166, 0.1)');
+
+  const defectChart = makeLineChart('Defect Rate (%)', defectRateData, '#f43f5e', 'rgba(244, 63, 94, 0.1)');
   const oeeChart = makeLineChart('OEE', oeeData, '#f59e0b', 'rgba(245, 158, 11, 0.1)');
 
 
@@ -727,7 +923,15 @@ function MachineDetailModal({
               value={outputLoading ? '…' : displayReject.toLocaleString('id-ID')}
               color="text-rose-600"
             />
-            <QuickStat icon={<Zap size={14} />} label="Throughput" value={`${metrics.throughput}/hr`} color="text-purple-600" />
+            <QuickStat
+              icon={tpLoading ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+              label="Throughput"
+              value={displayThroughput !== null
+                // displayThroughput is raw items/sec from real-time API
+                ? (displayThroughput >= 1 ? `${displayThroughput.toFixed(1)}/s` : `${(displayThroughput * 60).toFixed(1)}/min`)
+                : `${metrics.throughput}/hr`}
+              color="text-purple-600"
+            />
             <QuickStat
               icon={cycleTimeLoading ? <RefreshCw size={14} className="animate-spin" /> : <Clock size={14} />}
               label="Cycle Time"
@@ -783,7 +987,21 @@ function MachineDetailModal({
             </ChartCard>
 
             <ChartCard title="Throughput" subtitle="Units per hour" color="purple">
-              <Line data={throughputChart.data} options={throughputChart.options as any} />
+              <Line
+                data={throughputChart.data}
+                options={{
+                  ...throughputChart.options,
+                  plugins: {
+                    ...throughputChart.options.plugins,
+                    tooltip: {
+                      ...throughputChart.options.plugins.tooltip,
+                      callbacks: {
+                        label: (context: any) => `Throughput: ${context.parsed.y} units/hr`
+                      }
+                    }
+                  }
+                } as any}
+              />
             </ChartCard>
 
             <ChartCard
@@ -802,12 +1020,31 @@ function MachineDetailModal({
                   </div>
                 </div>
               ) : (
-                <Line data={cycleTimeChart.data} options={cycleTimeChart.options as any} />
+                <Line
+                  data={cycleTimeChart.data}
+                  options={{
+                    ...cycleTimeChart.options,
+                    scales: {
+                      ...cycleTimeChart.options.scales,
+                      y: {
+                        ...cycleTimeChart.options.scales.y,
+                        ticks: {
+                          ...cycleTimeChart.options.scales.y.ticks,
+                          callback: (value: any) => formatDurationTicks(value)
+                        }
+                      }
+                    }
+                  } as any}
+                />
               )}
             </ChartCard>
 
-            <ChartCard title="Quality Rate" subtitle="Pass percentage" color="emerald">
-              <Line data={qualityChart.data} options={qualityChart.options as any} />
+            <ChartCard
+              title={dashboardLoading ? 'Defect/Reject Rate' : `Defect/Reject Rate — ${defectRateValue}%`}
+              subtitle="Persentase defect per jam"
+              color="rose"
+            >
+              <Line data={defectChart.data} options={defectChart.options as any} />
             </ChartCard>
           </div>
         </div>

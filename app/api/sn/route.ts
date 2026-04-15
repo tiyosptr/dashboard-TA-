@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine';
+import { triggerThroughputUpdate } from '@/services/throughput_machine';
+import { triggerDefectByProcessUpdate } from '@/services/defect_by_process';
 
 /**
  * POST /api/sn
@@ -67,9 +69,17 @@ export async function POST(request: NextRequest) {
             if (dataItemsError) {
                 console.error('Error inserting Data Items:', dataItemsError);
             } else if (line_process_id) {
-                // Trigger cycle time calculation for the first process's machine
+                // Trigger cycle time calculation
                 cycleTimeDebug = await triggerCycleTimeUpdate(line_process_id);
                 console.log('[sn] Cycle time trigger result:', JSON.stringify(cycleTimeDebug));
+
+                // Trigger throughput calculation (Δt = 10 detik)
+                const throughputResult = await triggerThroughputUpdate(line_process_id, 10);
+                console.log('[sn] Throughput trigger result:', JSON.stringify(throughputResult));
+
+                // Trigger defect rate calculation → save to defect_by_process
+                const defectResult = await triggerDefectByProcessUpdate(line_process_id);
+                console.log('[sn] Defect rate trigger result:', JSON.stringify(defectResult));
             }
         }
 

@@ -124,13 +124,29 @@ export async function triggerCycleTimeUpdate(line_process_id: string): Promise<C
         let rangeStartUtc: Date;
         let rangeEndUtc: Date;
 
+        let shiftStartDay = day;
+        let shiftEndDay = day;
+
         if (isOvernight) {
-            rangeStartUtc = new Date(Date.UTC(year, month, day - 1, startH - 7, startM));
-            rangeEndUtc = new Date(Date.UTC(year, month, day, endH - 7, endM));
-        } else {
-            rangeStartUtc = new Date(Date.UTC(year, month, day, startH - 7, startM));
-            rangeEndUtc = new Date(Date.UTC(year, month, day, endH - 7, endM));
+            const currentWibH = wibNow.getUTCHours();
+            const currentWibM = wibNow.getUTCMinutes();
+            const currentMinutes = currentWibH * 60 + currentWibM;
+            const startMinutes = startH * 60 + startM;
+            
+            if (currentMinutes < startMinutes) {
+                shiftStartDay = day - 1;
+                shiftEndDay = day;
+            } else {
+                shiftStartDay = day;
+                shiftEndDay = day + 1;
+            }
         }
+
+        rangeStartUtc = new Date(Date.UTC(year, month, shiftStartDay, startH, startM));
+        rangeStartUtc.setUTCHours(rangeStartUtc.getUTCHours() - 7);
+
+        rangeEndUtc = new Date(Date.UTC(year, month, shiftEndDay, endH, endM));
+        rangeEndUtc.setUTCHours(rangeEndUtc.getUTCHours() - 7);
 
         console.log('[cycle_time] Range:', rangeStartUtc.toISOString(), '→', rangeEndUtc.toISOString());
 
@@ -208,13 +224,15 @@ export async function triggerCycleTimeUpdate(line_process_id: string): Promise<C
 
         console.log('[cycle_time] Total output:', totalOutput);
 
-        // ── 6. Calculate Cycle Time ──────────────────────────────
+        // ── 6. Calculate Cycle Time (Seconds per Item) ──────────
         let actualCycleTime: number | null = null;
         if (totalOutput > 0 && operatingTimeSeconds > 0) {
-            actualCycleTime = parseFloat((totalOutput / operatingTimeSeconds).toFixed(4));
+            // Standar industri: Cycle Time = Waktu / Item (Detik per Item)
+            // Ini lebih "masuk akal" bagi user (misal: "15 detik per item")
+            actualCycleTime = parseFloat((operatingTimeSeconds / totalOutput).toFixed(2));
         }
 
-        console.log('[cycle_time] Cycle time:', actualCycleTime);
+        console.log('[cycle_time] Cycle time (seconds/item):', actualCycleTime);
 
         // ── 7. Save to cycle_time_machine ────────────────────────
         const insertData: Record<string, any> = {
@@ -333,11 +351,19 @@ export async function getCycleTimeHistory(
 // ─── Format helpers ───────────────────────────────────────────────
 export function formatCycleTime(value: number | null): string {
     if (value === null || value <= 0) return '—';
-    if (value < 1) {
-        const perMinute = value * 60;
-        return `${perMinute.toFixed(2)}/minute`;
+    // value SEKARANG adalah "Detik per Item" (Durasi)
+    const sec = value;
+    if (sec < 60) {
+        return `${sec.toFixed(1)} sec`;
+    } else if (sec < 3600) {
+        const m = Math.floor(sec / 60);
+        const s = Math.round(sec % 60);
+        return s > 0 ? `${m} min ${s} sec` : `${m} min`;
+    } else {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
     }
-    return `${value.toFixed(2)}/sec`;
 }
 
 export function formatOperatingTime(seconds: number): string {

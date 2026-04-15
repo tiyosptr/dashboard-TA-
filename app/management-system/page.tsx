@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft,
   FileText,
@@ -26,7 +26,17 @@ import { TabType } from '@/types';
 
 export default function ManagementSystemPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get('tab') as TabType) || 'overview';
+  const woId = searchParams.get('woId');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab') as TabType;
+    if (tab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   // Tambahkan tab Machine Dashboard
   const tabs = [
@@ -35,7 +45,7 @@ export default function ManagementSystemPage() {
     { id: 'work-orders' as TabType, label: 'Work Orders', icon: <FileText size={18} /> },
     { id: 'machines' as TabType, label: 'Machine Management', icon: <Wrench size={18} /> },
     { id: 'history' as TabType, label: 'History', icon: <Clock size={18} /> },
-    { id: 'schedule' as TabType, label: 'Schedule', icon: <Calendar size={18} /> },
+    { id: 'schedule' as TabType, label: 'Schedule Maintenance', icon: <Calendar size={18} /> },
     { id: 'notifications' as TabType, label: 'Notifications', icon: <Bell size={18} /> },
   ];
 
@@ -249,7 +259,7 @@ export default function ManagementSystemPage() {
         )}
 
         {/* {activeTab === 'machine-dashboard' && <MachineDashboardOverview />} */}
-        {activeTab === 'work-orders' && <WorkOrderList />}
+        {activeTab === 'work-orders' && <WorkOrderList defaultWoId={woId} />}
         {activeTab === 'machines' && <MachineList />}
         {activeTab === 'history' && <MaintenanceHistory />}
         {activeTab === 'schedule' && <MaintenanceSchedule />}
