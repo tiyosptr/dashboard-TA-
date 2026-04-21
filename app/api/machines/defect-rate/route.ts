@@ -12,6 +12,8 @@ import { supabaseAdmin } from '@/lib/supabase/supabase-admin'
  *   - date: string (optional, YYYY-MM-DD, defaults to today WIB)
  *   - shiftId: string (optional)
  */
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams

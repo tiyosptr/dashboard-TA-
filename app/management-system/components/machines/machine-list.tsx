@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, Zap, RefreshCw, Filter,
   ChevronRight, Settings, X, ArrowUpRight, ArrowDownRight,
   BarChart3, Clock, Gauge, Shield, Box, Cpu, CalendarDays,
-  Play, PauseCircle, PowerOff, Plus
+  Play, PauseCircle, PowerOff, Plus, Layers
 } from 'lucide-react';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement,
@@ -36,6 +36,10 @@ interface MachineData {
   line_id: string | null;
   process_name: string | null;
   process_order: number;
+  real_output?: number;
+  real_pass?: number;
+  real_reject?: number;
+  real_defect_rate?: number;
 }
 
 interface LineOption {
@@ -47,28 +51,15 @@ interface LineOption {
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 function generateMetrics(machine: MachineData) {
-  const seed = machine.id.charCodeAt(0) + machine.id.charCodeAt(machine.id.length - 1);
-  const rand = (min: number, max: number) => {
-    const x = Math.sin(seed * 9301 + 49297) % 49297;
-    return min + (Math.abs(x) / 49297) * (max - min);
+  return {
+    oee: 0,
+    targetOutput: 0,
+    quality: 0,
+    output: machine.real_pass ?? 0,
+    reject: machine.real_reject ?? 0,
+    throughput: machine.real_throughput ?? 0,
+    cycleTime: machine.real_cycle_time ?? 0,
   };
-
-  const s = machine.status?.toLowerCase() || '';
-  const statusMultiplier = s === 'active' ? 1
-    : (s === 'on hold' || s === 'on-hold' || s === 'onhold') ? 0.75
-      : (s === 'maintenance' || s === 'inactive') ? 0
-        : 0.3; // downtime
-
-  const isOff = s === 'maintenance' || s === 'inactive';
-  const oee = isOff ? 0 : Math.round(rand(45, 95) * statusMultiplier);
-  const output = Math.round(rand(800, 4800) * statusMultiplier);
-  const targetOutput = Math.round(rand(3600, 5000));
-  const throughput = Math.round(rand(200, 600) * statusMultiplier);
-  const cycleTime = isOff ? 0 : +(rand(2.5, 8.0)).toFixed(1);
-  const quality = isOff ? 0 : Math.round(rand(90, 99.5) * 10) / 10;
-  const reject = Math.round(rand(10, 200) * (statusMultiplier > 0 ? 1 : 0));
-
-  return { oee, output, targetOutput, throughput, cycleTime, quality, reject };
 }
 
 function formatDurationFromHours(hoursStr: string | null): string {
@@ -175,8 +166,7 @@ function getStatusConfig(status: string) {
   return STATUS_CONFIG['active'];
 }
 
-// ─── Machine Card Component ─────────────────────────────────────────
-function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () => void }) {
+function MachineCard({ machine, onClick }: { machine: MachineData; onClick: (m: MachineData) => void }) {
   const config = getStatusConfig(machine.status);
   const metrics = useMemo(() => generateMetrics(machine), [machine]);
   const StatusIcon = config.icon;
@@ -205,15 +195,20 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () =
     dedupingInterval: 5000,
   });
   const defectApiData = defectRes?.data;
-
-  const displayTotal = outputApiData?.total_output ?? metrics.output;
   const displayPass = defectApiData?.totalPass ?? metrics.output;
   const displayReject = defectApiData?.totalReject ?? metrics.reject;
+  const displayTotal = displayPass + displayReject; // Calculated directly from data_items (Pass + Reject)
   const displayDefectRate = defectApiData?.defectRate ?? 0;
 
   return (
     <div
-      onClick={onClick}
+      onClick={() => onClick({
+        ...machine,
+        real_output: displayTotal,
+        real_pass: displayPass,
+        real_reject: displayReject,
+        real_defect_rate: displayDefectRate
+      })}
       onMouseEnter={() => {
         const todayWib = (() => {
           const now = new Date();
@@ -307,8 +302,7 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: () =
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <MetricCell label="Pass" value={displayPass.toLocaleString('id-ID')} unit="pcs" color="text-emerald-600" />
+        <div className="grid grid-cols-2 gap-2 mb-3">
           <MetricCell label="Reject" value={displayReject.toLocaleString('id-ID')} unit="pcs" color="text-rose-600" />
           <MetricCell label="Defect Rate" value={`${displayDefectRate}%`} unit="" color="text-rose-600" />
         </div>
@@ -442,9 +436,12 @@ function MachineDetailModal({
         const data = JSON.parse(event.data);
         if (data.machine_id && data.machine_id !== machine.id) return;
 
-        // Single mutation for the unified endpoint
+        // Single mutation for the unified endpoint and global grid hooks
         if (['CYCLE_TIME_UPDATE', 'THROUGHPUT_UPDATE', 'OUTPUT_UPDATE', 'DEFECT_RATE_UPDATE'].includes(data.type)) {
           mutate(dashboardUrl);
+          // Sync background grid cards
+          mutate(`/api/machines/output?machineId=${machine.id}&date=${todayWib}`);
+          mutate(`/api/machines/defect-rate?machineId=${machine.id}&date=${todayWib}`);
         }
       } catch (err) {
         console.error('[ws] Parse error:', err);
@@ -465,7 +462,7 @@ function MachineDetailModal({
   const StatusIcon = config.icon;
 
   // ── Derived output values ────────────────────────────────────────
-  const hasRealData = (outputApiData !== null) && !outputLoading;
+  const hasRealData = (outputApiData !== null);
   const displayPass = hasRealData ? (outputApiData?.totalPass ?? 0) : metrics.output;
   const displayReject = hasRealData ? (outputApiData?.totalReject ?? 0) : metrics.reject;
   const displayTotal = hasRealData ? (outputApiData?.totalProduced ?? 0) : (metrics.output + metrics.reject);
@@ -476,13 +473,13 @@ function MachineDetailModal({
   const defectRateValue = defectApiData?.defectRate ?? 0;
 
   // ── Derived throughput values ───────────────────────────────────
-  const hasRealThroughput = (throughputApiData !== null) && !tpLoading;
+  const hasRealThroughput = (throughputApiData !== null);
   const displayThroughput = hasRealThroughput
     ? Number(throughputApiData.troughput)
     : (machine.real_throughput ?? null);
 
   // ── Derived cycle time values ───────────────────────────────────
-  const hasRealCycleTime = (cycleTimeApiData !== null) && !cycleTimeLoading;
+  const hasRealCycleTime = (cycleTimeApiData !== null);
   const displayCycleTime = hasRealCycleTime && cycleTimeApiData?.actual_cycle_time !== null
     ? cycleTimeApiData.actual_cycle_time
     : metrics.cycleTime;
@@ -536,18 +533,42 @@ function MachineDetailModal({
     return `${val.toFixed(0)}/hr`;
   };
 
-  // ── Hourly chart data from API ───────────────────────────────────
-  const shiftHours = (outputApiData?.hourly ?? []).map((h: any) => h.hour_slot.split('-')[0]);
-  const realOutputByHour = (outputApiData?.hourly ?? []).map((h: any) => h.pass);
-  const realRejectByHour = (outputApiData?.hourly ?? []).map((h: any) => h.reject);
+  // ── Hourly chart data from API with smart instant mathematical array fallbacks ──
+  const resolveCurrentShiftArray = () => {
+    const wibHr = (new Date().getUTCHours() + 7) % 24;
+    let fallback = [];
+    if (wibHr >= 7 && wibHr < 15) { fallback = ['07', '08', '09', '10', '11', '12', '13', '14']; }
+    else if (wibHr >= 15 && wibHr < 23) { fallback = ['15', '16', '17', '18', '19', '20', '21', '22']; }
+    else { fallback = ['23', '00', '01', '02', '03', '04', '05', '06']; }
+    return fallback;
+  };
+
+  const fallbackHours = resolveCurrentShiftArray();
+  const hasHourlyData = outputApiData?.hourly && outputApiData.hourly.length > 0;
+
+  const shiftHours = hasHourlyData
+    ? outputApiData.hourly.map((h: any) => h.hour_slot.split('-')[0])
+    : fallbackHours;
+
+  const seedNum = machine.id.charCodeAt(0);
+
+  const realOutputByHour = hasHourlyData
+    ? outputApiData.hourly.map((h: any) => h.pass)
+    : fallbackHours.map(() => 0);
+
+  const realRejectByHour = hasHourlyData
+    ? outputApiData.hourly.map((h: any) => h.reject)
+    : fallbackHours.map(() => 0);
 
   // ── Real hourly data for charts ─────────────────────────────────
-  const seedNum = machine.id.charCodeAt(0);
 
   // Throughput chart: using real hourly pass counts (units/hour)
   const throughputData = shiftHours.map((_: any, i: number) => {
-    const hourData = (outputApiData?.hourly ?? [])[i];
-    return hourData ? hourData.pass : 0;
+    if (hasHourlyData) {
+      const hourData = outputApiData.hourly[i];
+      return hourData ? hourData.pass : 0;
+    }
+    return 0;
   });
 
   // Cycle time chart: mapping historical records to shift hours
@@ -557,30 +578,32 @@ function MachineDetailModal({
       : [...Array.from({ length: 24 - parseInt(activeShiftInfo.start_time) }, (_: any, i: number) => parseInt(activeShiftInfo.start_time) + i), ...Array.from({ length: parseInt(activeShiftInfo.end_time) }, (_: any, i: number) => i)]
     : Array.from({ length: 24 }, (_: any, i: number) => i);
 
-  // Hourly cycle time data (mapped to shift hours)
-  const cycleTimeData = shiftHours.map((_: any, i: number) => {
-    const slotHour = shiftSlots[i];
-    const recordsInHour = (ctHistoryRes?.data || []).filter((r: any) => {
-      const h = new Date(new Date(r.created_at).getTime() + 7 * 3600000).getUTCHours();
-      return h === slotHour;
-    });
-    return recordsInHour.length > 0 ? (recordsInHour[0].actual_cycle_time || 0) : 0;
-  });
-
-  // Hourly cycle time data (mapped to shift hours)
-  // v sekarang sudah dalam "Detik per Item" dari database
-  const cycleTimeLineData = cycleTimeData.map((v: number) => {
-    if (v <= 0) return 0;
-    // Karena sudah durasi detik, kita langsung ambil nilainya
-    return +v.toFixed(1);
+  // Hourly cycle time data
+  const cycleTimeLineData = shiftHours.map((_: any, i: number) => {
+    if (ctHistoryRes?.data && ctHistoryRes.data.length > 0) {
+      const slotHour = shiftSlots[i];
+      const recordsInHour = ctHistoryRes.data.filter((r: any) => {
+        const h = new Date(new Date(r.created_at).getTime() + 7 * 3600000).getUTCHours();
+        return h === slotHour;
+      });
+      const v = recordsInHour.length > 0 ? (recordsInHour[0].actual_cycle_time || 0) : 0;
+      return v > 0 ? +v.toFixed(1) : 0;
+    }
+    return 0;
   });
 
   // Quality & OEE charts
   const defectRateData = shiftHours.map((_: any, i: number) => {
-    const hourData = (defectApiData?.hourly ?? [])[i];
-    return hourData ? hourData.defect_rate : 0;
+    if (defectApiData?.hourly && defectApiData.hourly.length > 0) {
+      const hourData = defectApiData.hourly[i];
+      return hourData ? hourData.defect_rate : 0;
+    }
+    return 0;
   });
-  const oeeData = shiftHours.map((_: any, i: number) => Math.round(metrics.oee * (0.8 + Math.cos(seedNum + i * 0.5) * 0.2)));
+
+  const oeeData = shiftHours.map((_: any, i: number) => {
+    return 0;
+  });
 
   const chartTheme = {
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
@@ -912,19 +935,19 @@ function MachineDetailModal({
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <QuickStat icon={<Gauge size={14} />} label="OEE" value={`${metrics.oee}%`} color={oeeColor} />
             <QuickStat
-              icon={outputLoading ? <RefreshCw size={14} className="animate-spin" /> : <BarChart3 size={14} />}
+              icon={<BarChart3 size={14} />}
               label="Pass"
-              value={outputLoading ? '…' : displayPass.toLocaleString('id-ID')}
+              value={displayPass.toLocaleString('id-ID')}
               color="text-indigo-600"
             />
             <QuickStat
               icon={<AlertTriangle size={14} />}
               label="Reject"
-              value={outputLoading ? '…' : displayReject.toLocaleString('id-ID')}
+              value={displayReject.toLocaleString('id-ID')}
               color="text-rose-600"
             />
             <QuickStat
-              icon={tpLoading ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+              icon={<Zap size={14} />}
               label="Throughput"
               value={displayThroughput !== null
                 // displayThroughput is raw items/sec from real-time API
@@ -933,9 +956,9 @@ function MachineDetailModal({
               color="text-purple-600"
             />
             <QuickStat
-              icon={cycleTimeLoading ? <RefreshCw size={14} className="animate-spin" /> : <Clock size={14} />}
+              icon={<Clock size={14} />}
               label="Cycle Time"
-              value={cycleTimeLoading ? '…' : formatCTValue(displayCycleTime)}
+              value={formatCTValue(displayCycleTime)}
               color="text-teal-600"
             />
             <QuickStat icon={<Activity size={14} />} label="Runtime" value={formatDurationFromHours(machine.total_running_hours)} color="text-slate-600" />
@@ -970,20 +993,11 @@ function MachineDetailModal({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Output Chart — REAL DATA (stacked pass+reject with summary) */}
             <ChartCard
-              title={outputLoading ? 'Output' : `Output — Pass: ${displayPass.toLocaleString('id-ID')}  Reject: ${displayReject.toLocaleString('id-ID')}`}
-              subtitle={hasRealData ? `Total: ${displayTotal.toLocaleString('id-ID')} / Target: ${displayTarget.toLocaleString('id-ID')}` : 'Memuat data…'}
+              title={`Output — Pass: ${displayPass.toLocaleString('id-ID')}  Reject: ${displayReject.toLocaleString('id-ID')}`}
+              subtitle={hasRealData ? `Total: ${displayTotal.toLocaleString('id-ID')} / Target: ${displayTarget.toLocaleString('id-ID')}` : `Total: ${displayTotal.toLocaleString('id-ID')} / Target: ${displayTarget.toLocaleString('id-ID')}`}
               color="indigo"
             >
-              {outputLoading ? (
-                <div className="h-full flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
-                    <RefreshCw size={18} className="animate-spin text-indigo-400" />
-                    <span className="text-xs font-medium">Memuat output...</span>
-                  </div>
-                </div>
-              ) : (
-                <Bar data={realOutputChartData} options={realOutputChartOptions} />
-              )}
+              <Bar data={realOutputChartData} options={realOutputChartOptions} />
             </ChartCard>
 
             <ChartCard title="Throughput" subtitle="Units per hour" color="purple">
@@ -1005,38 +1019,29 @@ function MachineDetailModal({
             </ChartCard>
 
             <ChartCard
-              title={cycleTimeLoading ? 'Cycle Time' : `Cycle Time — ${displayCycleTime !== null ? formatCTValue(displayCycleTime) : 'N/A'}`}
+              title={`Cycle Time — ${displayCycleTime !== null ? formatCTValue(displayCycleTime) : 'N/A'}`}
               subtitle={hasRealCycleTime
                 ? `Total Item: ${displayCycleTimeOutput} pcs`
-                : 'Memuat data…'
+                : 'Mengalkulasi riwayat...'
               }
               color="teal"
             >
-              {cycleTimeLoading ? (
-                <div className="h-full flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
-                    <RefreshCw size={18} className="animate-spin text-teal-400" />
-                    <span className="text-xs font-medium">Menghitung cycle time...</span>
-                  </div>
-                </div>
-              ) : (
-                <Line
-                  data={cycleTimeChart.data}
-                  options={{
-                    ...cycleTimeChart.options,
-                    scales: {
-                      ...cycleTimeChart.options.scales,
-                      y: {
-                        ...cycleTimeChart.options.scales.y,
-                        ticks: {
-                          ...cycleTimeChart.options.scales.y.ticks,
-                          callback: (value: any) => formatDurationTicks(value)
-                        }
+              <Line
+                data={cycleTimeChart.data}
+                options={{
+                  ...cycleTimeChart.options,
+                  scales: {
+                    ...cycleTimeChart.options.scales,
+                    y: {
+                      ...cycleTimeChart.options.scales.y,
+                      ticks: {
+                        ...cycleTimeChart.options.scales.y.ticks,
+                        callback: (value: any) => formatDurationTicks(value)
                       }
                     }
-                  } as any}
-                />
-              )}
+                  }
+                } as any}
+              />
             </ChartCard>
 
             <ChartCard
@@ -1099,9 +1104,28 @@ export default function MachineManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterLine, setFilterLine] = useState('all');
+  const [hasRestoredLine, setHasRestoredLine] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState<MachineData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // Restore filterLine from localStorage on load
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('management_selected_line');
+      if (saved) setFilterLine(saved);
+    } catch { }
+    setHasRestoredLine(true);
+  }, []);
+
+  // Save filterLine to localStorage on change
+  useEffect(() => {
+    if (hasRestoredLine) {
+      try {
+        localStorage.setItem('management_selected_line', filterLine);
+      } catch { }
+    }
+  }, [filterLine, hasRestoredLine]);
 
   // Fetch machines
   const fetchMachines = useCallback(async () => {
@@ -1110,7 +1134,7 @@ export default function MachineManagement() {
       if (filterLine !== 'all') params.set('lineId', filterLine);
       if (filterStatus !== 'all') params.set('status', filterStatus);
 
-      const res = await fetch(`/api/machines/with-details?${params.toString()}`);
+      const res = await fetch(`/api/machines/with-details?${params.toString()}`, { cache: 'no-store' });
       const json = await res.json();
       if (json.success) {
         setMachines(json.data || []);
@@ -1150,7 +1174,30 @@ export default function MachineManagement() {
       fetchMachines();
     }, 5000);
 
-    return () => clearInterval(interval);
+    // ── Global WebSocket List Listener ──
+    const socket = new WebSocket('ws://localhost:3001');
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'MACHINE_STATUS_UPDATE') {
+          console.log('[ws] Global Status Update Detected. Refreshing Machine List...');
+          fetchMachines();
+        }
+        if (['CYCLE_TIME_UPDATE', 'THROUGHPUT_UPDATE', 'OUTPUT_UPDATE', 'DEFECT_RATE_UPDATE'].includes(data.type)) {
+          // Mutate ALL machine data cards dynamically across the Grid 
+          mutate(
+            (key: any) => typeof key === 'string' && key.startsWith('/api/machines'),
+            undefined,
+            { revalidate: true }
+          );
+        }
+      } catch (err) { }
+    };
+
+    return () => {
+      clearInterval(interval);
+      socket.close();
+    };
   }, [fetchMachines]);
 
   const handleRefresh = () => {
@@ -1360,27 +1407,28 @@ export default function MachineManagement() {
       </div>
 
       {/* Machine Grid */}
+      {/* Machine Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 animate-pulse">
-              <div className="h-1 w-full bg-slate-200 rounded-full mb-4" />
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="h-4 bg-slate-200 rounded w-2/3 mb-2" />
-                  <div className="h-3 bg-slate-100 rounded w-1/2" />
-                </div>
-                <div className="h-6 w-16 bg-slate-200 rounded-lg" />
+        <div className="flex items-center justify-center py-32 w-full bg-white rounded-3xl shadow-sm border border-slate-100">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center animate-pulse">
+                <Activity size={28} className="text-white" />
               </div>
-              <div className="h-2 bg-slate-200 rounded-full mb-3" />
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                {[1, 2, 3].map(j => <div key={j} className="h-14 bg-slate-100 rounded-lg" />)}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[1, 2].map(j => <div key={j} className="h-14 bg-slate-100 rounded-lg" />)}
-              </div>
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-400 border-[3px] border-white animate-bounce" />
             </div>
-          ))}
+            <p className="text-slate-500 font-bold tracking-wide">Sinkronisasi Sensor Mesin...</p>
+          </div>
+        </div>
+      ) : filterLine === 'all' ? (
+        <div className="bg-white rounded-3xl border border-slate-200 py-20 flex flex-col items-center justify-center text-center shadow-sm">
+          <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center mb-6 shadow-inner border border-indigo-100">
+            <Layers size={32} className="text-indigo-500 animate-pulse text-opacity-80" />
+          </div>
+          <h3 className="text-2xl font-black text-slate-800 tracking-tight">Pilih Area Produksi</h3>
+          <p className="text-sm font-medium text-slate-500 mt-3 max-w-sm leading-relaxed">
+            Data mesin terlalu luas. Harap pilih <strong>Line Produksi</strong> spesifik pada menu <em>dropdown</em> di atas untuk memantau performa dan rincian mesin secara mendetail.
+          </p>
         </div>
       ) : filteredMachines.length > 0 ? (
         <div className="space-y-6">
@@ -1444,7 +1492,7 @@ export default function MachineManagement() {
                     <MachineCard
                       key={machine.id}
                       machine={machine}
-                      onClick={() => setSelectedMachine(machine)}
+                      onClick={(enhancedMachine) => setSelectedMachine(enhancedMachine)}
                     />
                   ))}
                 </div>

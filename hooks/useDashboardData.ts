@@ -85,6 +85,64 @@ export interface DashboardSummary {
         criticalCount: number
     }
 
+    // Throughput Line data (from troughput_line table)
+    throughput?: {
+        latest: {
+            id: string
+            line_id: string | null
+            line_process_id: string | null
+            data_items_id: string | null
+            actual_trougput: number | null
+            actual_troughput: number | null
+            shift_id: string | null
+            rate: number | null
+            total_pass: number | null
+            eff: number | null
+            interval_time: number | null
+            created_at: string
+        } | null
+        history: {
+            id: string
+            line_id: string | null
+            line_process_id: string | null
+            data_items_id: string | null
+            actual_trougput: number | null
+            actual_troughput: number | null
+            shift_id: string | null
+            rate: number | null
+            total_pass: number | null
+            eff: number | null
+            interval_time: number | null
+            created_at: string
+        }[]
+    }
+
+    // Cycle Time Line data (computed from actual_output + shift duration)
+    cycleTimeLine?: {
+        /** CT saat ini dalam detik/unit, null bila belum ada output */
+        actual_cycle_time: number | null
+        /** Jumlah unit pass VIFG dalam window waktu */
+        total_output: number
+        /** Durasi shift/window dalam detik */
+        operating_time_seconds: number
+        /** Nama proses terakhir (VIFG) yang digunakan */
+        process_name: string | null
+        /** line_process_id VIFG */
+        line_process_id: string | null
+        /** Nama shift yang dipakai untuk operating time */
+        shift_name: string | null
+        /** History CT dari tabel cycle_time_line (oldest → newest) */
+        history: {
+            id: string
+            created_at: string
+            actual_cycle_time: number | null
+            line_id: string | null
+            line_process_id: string | null
+            shift_id: string | null
+            actual_output_id: string | null
+        }[]
+    }
+
     // Analysis tab data
     trend?: {
         date: string
@@ -181,6 +239,8 @@ export function useDashboardData({
         oee: data?.oee,
         machines: data?.machines,
         notifications: data?.notifications,
+        throughput: data?.throughput,
+        cycleTimeLine: data?.cycleTimeLine,
         trend: data?.trend,
         history: data?.history,
     }

@@ -116,6 +116,24 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
+  // Global Realtime WebSocket for Dashboard
+  useEffect(() => {
+    const socket = new WebSocket('ws://localhost:3001');
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'MACHINE_STATUS_UPDATE') {
+          console.log('[ws] Dashboard detected machine status change. Refreshing...');
+          mutate();
+        }
+      } catch (err) { }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [mutate]);
+
   // Downtime alerts handling
 
   const handleManagementSystem = useCallback(() => {
@@ -182,10 +200,19 @@ export default function Home() {
             />
           </div>
           <div className="w-[25%]">
-            <ThroughputChart className="h-full w-full" />
+            <ThroughputChart
+              className="h-full w-full"
+              lineId={selectedLineId}
+              throughputData={dashboardData?.throughput}
+            />
           </div>
           <div className="w-[25%]">
-            <CycleTime className="h-full w-full" />
+            <CycleTime
+              className="h-full w-full"
+              cycleTimeData={dashboardData?.cycleTimeLine}
+              lineId={selectedLineId}
+              isLoading={isLoading}
+            />
           </div>
           <div className="w-[25%]">
             <StatusMachine

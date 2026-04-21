@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine';
 import { triggerThroughputUpdate } from '@/services/throughput_machine';
 import { triggerDefectByProcessUpdate } from '@/services/defect_by_process';
+import { calculateLineThroughput } from '@/services/calculation/dashboard-line/throughput_line';
 
 /**
  * POST /api/data-items-add
@@ -79,6 +80,26 @@ export async function POST(request: NextRequest) {
         const defectResult = await triggerDefectByProcessUpdate(line_process_id);
         console.log('[data-items-add] Defect rate trigger result:', JSON.stringify(defectResult));
 
+        // Trigger LINE throughput calculation (hanya jika proses VIFG / last process)
+        // ΔQ diambil dari VIFG saja → tidak ada double counting antar proses
+        let lineThroughputResult = null;
+        if (isVifg && lpData?.process) {
+            // Ambil line_id dari line_process
+            const { data: lpFull } = await supabaseAdmin
+                .from('line_process')
+                .select('line_id')
+                .eq('id', line_process_id)
+                .single();
+
+            if (lpFull?.line_id) {
+                lineThroughputResult = await calculateLineThroughput(
+                    lpFull.line_id,
+                    10  // window 10 menit
+                );
+                console.log('[data-items-add] Line throughput result:', JSON.stringify(lineThroughputResult));
+            }
+        }
+
         return NextResponse.json({
             success: true,
             data,
@@ -86,6 +107,7 @@ export async function POST(request: NextRequest) {
             cycle_time_debug: cycleTimeResult,
             throughput_debug: throughputResult,
             defect_rate_debug: defectResult,
+            line_throughput_debug: lineThroughputResult,
         }, { status: 201 });
     } catch (err) {
         console.error('Unexpected error:', err);

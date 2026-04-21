@@ -7,6 +7,7 @@ import WorkOrderDetail from './work-order-detail';
 import WorkOrderKanban from './work-order-kanban';
 import { WorkOrder, WorkOrderStatus } from '@/types';
 import { supabase } from '@/lib/supabase/supabase';
+import useSWR from 'swr';
 
 interface WorkOrderListProps {
   defaultWoId?: string | null;
@@ -19,48 +20,28 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
-  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
   const [hasAutoOpened, setHasAutoOpened] = useState(false);
 
-  // Load work orders from API
-  const loadWorkOrders = async (showLoader = true) => {
-    if (showLoader) setIsLoading(true);
-    setIsRefreshing(true);
+  // ── SWR Data Fetching ──
+  const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then(res => res.json());
+  
+  const { data: woData, isLoading, isValidating, mutate } = useSWR('/api/work-orders', fetcher, {
+    refreshInterval: 10000,
+    keepPreviousData: true, // Prevent UI flashing during revalidation
+  });
 
-    try {
-      const response = await fetch('/api/work-orders', {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
-      });
+  const workOrders: WorkOrder[] = woData?.success ? woData.data : [];
 
-      const result = await response.json();
-
-      if (result.success) {
-        console.log('Work orders loaded:', result.data.length);
-        setWorkOrders(result.data);
-
-        // Auto-open work order if defaultWoId is provided and we haven't done it yet
-        if (defaultWoId && !hasAutoOpened) {
-          const woToOpen = result.data.find((wo: WorkOrder) => wo.id === defaultWoId);
-          if (woToOpen) {
-            setSelectedWorkOrder(woToOpen);
-            setHasAutoOpened(true);
-          }
-        }
+  // Auto-open logic on load
+  useEffect(() => {
+    if (defaultWoId && !hasAutoOpened && workOrders.length > 0) {
+      const woToOpen = workOrders.find((wo: WorkOrder) => wo.id === defaultWoId);
+      if (woToOpen) {
+        setSelectedWorkOrder(woToOpen);
+        setHasAutoOpened(true);
       }
-    } catch (error) {
-      console.error('Error loading work orders:', error);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
     }
-  };
+  }, [defaultWoId, workOrders, hasAutoOpened]);
 
   // Update work order status
   const handleStatusChange = async (workOrderId: string, newStatus: WorkOrderStatus) => {
@@ -80,8 +61,8 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
       const result = await response.json();
 
       if (result.success) {
-        // Reload all work orders to ensure consistency
-        await loadWorkOrders(false);
+        // Force SWR to mutate
+        mutate();
 
         // Update selected work order if it's open
         if (selectedWorkOrder && selectedWorkOrder.id === workOrderId) {
@@ -94,8 +75,6 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
   };
 
   useEffect(() => {
-    loadWorkOrders();
-
     // Set up real-time subscription
     const channel = supabase
       .channel('work-orders-realtime')
@@ -108,25 +87,19 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
         },
         (payload) => {
           console.log('Work order change detected:', payload);
-          // Reload work orders when any change is detected
-          loadWorkOrders(false);
+          // Trigger SWR mutation
+          mutate();
         }
       )
       .subscribe();
 
-    // Polling as backup (every 10 seconds)
-    const pollInterval = setInterval(() => {
-      loadWorkOrders(false);
-    }, 10000);
-
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(pollInterval);
     };
-  }, []);
+  }, [mutate]);
 
   const handleRefresh = () => {
-    loadWorkOrders(false);
+    mutate();
   };
 
   const filteredWorkOrders = workOrders.filter((wo) => {
@@ -187,12 +160,17 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
     }
   };
 
-  if (isLoading) {
+  if (isLoading && workOrders.length === 0) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading work orders...</p>
+      <div className="flex items-center justify-center h-[500px] w-full bg-white rounded-3xl shadow-sm border border-slate-100">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center animate-pulse">
+              <List size={28} className="text-white" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-400 border-[3px] border-white animate-bounce" />
+          </div>
+          <p className="text-slate-500 font-bold tracking-wide">Menyiapkan Work Orders...</p>
         </div>
       </div>
     );
@@ -211,10 +189,10 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
           <div className="flex gap-2">
             <button
               onClick={handleRefresh}
-              disabled={isRefreshing}
+              disabled={isValidating}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 backdrop-blur-sm border border-white/30 text-white rounded-lg hover:bg-white/30 transition-all disabled:opacity-50 font-medium text-sm"
             >
-              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={isValidating ? 'animate-spin' : ''} />
               Refresh
             </button>
 
@@ -424,7 +402,7 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
         <WorkOrderForm
           onClose={() => {
             setShowForm(false);
-            loadWorkOrders(false); // Reload after closing form
+            mutate(); // Reload after closing form
           }}
         />
       )}

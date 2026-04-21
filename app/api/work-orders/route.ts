@@ -90,6 +90,26 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Sync machine status based on work order type
+    if (workOrder.machineId && (workOrder.type === 'downtime' || workOrder.type === 'maintenance')) {
+      try {
+        const baseUrl = request.nextUrl.origin;
+        const statusChangeUrl = `${baseUrl}/api/machines/status-change`;
+        console.log('[WO Create] Calling status-change endpoint:', statusChangeUrl);
+
+        await fetch(statusChangeUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            machine_id: workOrder.machineId, 
+            new_status: workOrder.type // 'downtime' or 'maintenance'
+          })
+        });
+      } catch (statusErr) {
+        console.error('[WO Create] Failed to update machine status:', statusErr);
+      }
+    }
+
     return NextResponse.json(workOrder, { status: 201 })
   } catch (error) {
     console.error('Error creating work order:', error)

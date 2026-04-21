@@ -21,6 +21,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 
+export const dynamic = 'force-dynamic';
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);
@@ -212,37 +214,21 @@ export async function GET(
     const hasLineProcesses = lineProcessIds.length > 0;
 
     // Build all promises
-    const dataItemsPromise = hasLineProcesses
-      ? (async () => {
-          const CHUNK = 50;
-          let allItems: any[] = [];
-          for (let i = 0; i < lineProcessIds.length; i += CHUNK) {
-            const chunk = lineProcessIds.slice(i, i + CHUNK);
-            const { data } = await supabaseAdmin
-              .from('data_items')
-              .select('id, status, created_at')
-              .in('line_process_id', chunk)
-              .gte('created_at', rangeStartUtc.toISOString())
-              .lt('created_at', rangeEndUtc.toISOString());
-            if (data) allItems = allItems.concat(data);
-          }
-          return allItems;
-        })()
-      : Promise.resolve([]);
+    const targetOutputPromise = Promise.resolve(1000);
 
     const defectPromise = hasLineProcesses
       ? (async () => {
-          let query = supabaseAdmin
-            .from('defect_by_process')
-            .select('*')
-            .in('line_process_id', lineProcessIds)
-            .eq('recorded_date', wibDateStr);
-          if (activeShift) {
-            query = query.eq('shift_id', activeShift.id);
-          }
-          const { data } = await query.order('recorded_hour', { ascending: true });
-          return data || [];
-        })()
+        let query = supabaseAdmin
+          .from('defect_by_process')
+          .select('*')
+          .in('line_process_id', lineProcessIds)
+          .eq('recorded_date', wibDateStr);
+        if (activeShift) {
+          query = query.eq('shift_id', activeShift.id);
+        }
+        const { data } = await query.order('recorded_hour', { ascending: true });
+        return data || [];
+      })()
       : Promise.resolve([]);
 
     const cycleTimePromise = supabaseAdmin
@@ -274,13 +260,13 @@ export async function GET(
 
     // Execute ALL in parallel
     const [
-      allItems,
+      targetOutputResult,
       defectRecords,
       cycleTimeResult,
       cycleTimeHistory,
       throughputResult,
     ] = await Promise.all([
-      dataItemsPromise,
+      targetOutputPromise,
       defectPromise,
       cycleTimePromise,
       cycleTimeHistoryPromise,
@@ -288,56 +274,10 @@ export async function GET(
     ]);
 
     // ══════════════════════════════════════════════════════════════════
-    // PHASE 3: Aggregate results (CPU-only, no more DB calls)
+    // PHASE 3: Aggregate results (Instant CPU mapping, no raw loop)
     // ══════════════════════════════════════════════════════════════════
 
-    // ── Output aggregation ───────────────────────────────────────────
-    const totalPass = allItems.filter((it: any) => it.status?.toLowerCase() === 'pass').length;
-    const totalReject = allItems.filter((it: any) => it.status?.toLowerCase() === 'reject').length;
-    const totalProduced = totalPass + totalReject;
-
-    // Target output (get from first actual_output if available)
-    let targetOutput = 1000;
-    if (allItems.length > 0) {
-      const sampleIds = allItems.slice(0, 50).map((it: any) => it.id);
-      const { data: aoRows } = await supabaseAdmin
-        .from('actual_output')
-        .select('target_output')
-        .in('data_item_id', sampleIds)
-        .limit(1);
-      if (aoRows && aoRows.length > 0 && aoRows[0].target_output) {
-        targetOutput = Number(aoRows[0].target_output);
-      }
-    }
-
-    // Hourly output breakdown
-    const shiftSlots = activeShift
-      ? buildShiftSlots(activeShift.start_time, activeShift.end_time)
-      : Array.from({ length: 24 }, (_, h) => ({
-          slot: `${h.toString().padStart(2, '0')}:00-${(h + 1).toString().padStart(2, '0')}:00`,
-          hour: h,
-        }));
-
-    const hourMap: Record<number, { pass: number; reject: number }> = {};
-    for (let h = 0; h < 24; h++) hourMap[h] = { pass: 0, reject: 0 };
-
-    allItems.forEach((item: any) => {
-      if (!item.created_at) return;
-      const utcMs = new Date(item.created_at).getTime();
-      const wibHour = new Date(utcMs + 7 * 60 * 60 * 1000).getUTCHours();
-      const status = item.status?.toLowerCase();
-      if (status === 'pass') hourMap[wibHour].pass++;
-      else if (status === 'reject') hourMap[wibHour].reject++;
-    });
-
-    const outputHourly = shiftSlots.map(s => ({
-      hour_slot: s.slot,
-      pass: hourMap[s.hour].pass,
-      reject: hourMap[s.hour].reject,
-      total: hourMap[s.hour].pass + hourMap[s.hour].reject,
-    }));
-
-    // ── Defect rate aggregation ──────────────────────────────────────
+    // ── Defect rate & Totals aggregation ─────────────────────────────
     let defectTotalProduced = 0;
     let defectTotalPass = 0;
     let defectTotalReject = 0;
@@ -351,6 +291,33 @@ export async function GET(
     const defectRate = defectTotalProduced > 0
       ? +((defectTotalReject / defectTotalProduced) * 100).toFixed(2)
       : 0;
+
+    // ── Output aggregation ───────────────────────────────────────────
+    const totalPass = defectTotalPass;
+    const totalReject = defectTotalReject;
+    const totalProduced = defectTotalProduced;
+    const targetOutput = targetOutputResult;
+
+    const shiftSlots = activeShift
+      ? buildShiftSlots(activeShift.start_time, activeShift.end_time)
+      : Array.from({ length: 24 }, (_, h) => ({
+        slot: `${h.toString().padStart(2, '0')}:00-${(h + 1).toString().padStart(2, '0')}:00`,
+        hour: h,
+      }));
+
+    // Generate Hourly Metrics from Pre-aggregated Defect Data
+    const outputHourly = shiftSlots.map(s => {
+      const hourRecords = defectRecords.filter((r: any) => r.recorded_hour === s.hour);
+      const hourProduced = hourRecords.reduce((sum: number, r: any) => sum + (Number(r.total_produced) || 0), 0);
+      const hourReject = hourRecords.reduce((sum: number, r: any) => sum + (Number(r.total_reject) || 0), 0);
+      const hourPass = hourRecords.reduce((sum: number, r: any) => sum + (Number(r.total_pass) || 0), 0);
+      return {
+        hour_slot: s.slot,
+        pass: hourPass,
+        reject: hourReject,
+        total: hourProduced,
+      };
+    });
 
     const defectHourly = shiftSlots.map(s => {
       const hourRecords = defectRecords.filter((r: any) => r.recorded_hour === s.hour);

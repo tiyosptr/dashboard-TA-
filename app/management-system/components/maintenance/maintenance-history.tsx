@@ -33,7 +33,10 @@ export default function MaintenanceHistory() {
   if (dateRange.start) params.set('startDate', dateRange.start);
   if (dateRange.end) params.set('endDate', dateRange.end);
 
-  const { data: apiResponse, isLoading } = useSWR(`/api/work-order-history?${params.toString()}`, fetcher);
+  const { data: apiResponse, isLoading, isValidating } = useSWR(`/api/work-order-history?${params.toString()}`, fetcher, {
+    refreshInterval: 10000,
+    keepPreviousData: true,
+  });
   
   const historyData = apiResponse?.success ? apiResponse.data : [];
 
@@ -197,9 +200,17 @@ export default function MaintenanceHistory() {
       {/* History Table */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto min-h-[300px]">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-48">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+          {isLoading && historyData.length === 0 ? (
+            <div className="flex items-center justify-center py-24 w-full bg-white rounded-3xl shadow-sm border border-slate-100">
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center animate-pulse">
+                    <FileText size={28} className="text-white" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-400 border-[3px] border-white animate-bounce" />
+                </div>
+                <p className="text-slate-500 font-bold tracking-wide">Menelusuri Riwayat Pemeliharaan...</p>
+              </div>
             </div>
           ) : (
             <table className="w-full">
@@ -288,11 +299,17 @@ export default function MaintenanceHistory() {
           )}
         </div>
 
-        {!isLoading && filteredHistory.length === 0 && (
+        {!isLoading && filteredHistory.length === 0 && historyData.length > 0 && (
           <div className="text-center py-12 text-gray-500 border-t border-gray-100">
             <Filter size={48} className="mx-auto mb-4 opacity-30 text-slate-400" />
             <p className="font-medium text-sm text-slate-600">No history found</p>
             <p className="text-xs text-slate-400 mt-1">Adjust your filters to see more results.</p>
+          </div>
+        )}
+        {!isLoading && historyData.length === 0 && (
+          <div className="text-center py-12 text-gray-500 border-t border-gray-100">
+             <FileText size={48} className="mx-auto mb-4 opacity-30 text-slate-400" />
+             <p className="font-medium text-sm text-slate-600">Jejak Histori Kosong / Belum Ada</p>
           </div>
         )}
       </div>

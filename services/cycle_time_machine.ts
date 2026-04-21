@@ -132,7 +132,7 @@ export async function triggerCycleTimeUpdate(line_process_id: string): Promise<C
             const currentWibM = wibNow.getUTCMinutes();
             const currentMinutes = currentWibH * 60 + currentWibM;
             const startMinutes = startH * 60 + startM;
-            
+
             if (currentMinutes < startMinutes) {
                 shiftStartDay = day - 1;
                 shiftEndDay = day;
@@ -227,8 +227,7 @@ export async function triggerCycleTimeUpdate(line_process_id: string): Promise<C
         // ── 6. Calculate Cycle Time (Seconds per Item) ──────────
         let actualCycleTime: number | null = null;
         if (totalOutput > 0 && operatingTimeSeconds > 0) {
-            // Standar industri: Cycle Time = Waktu / Item (Detik per Item)
-            // Ini lebih "masuk akal" bagi user (misal: "15 detik per item")
+            // Rumus Cycle Time = Waktu / Item (Detik per Item)
             actualCycleTime = parseFloat((operatingTimeSeconds / totalOutput).toFixed(2));
         }
 

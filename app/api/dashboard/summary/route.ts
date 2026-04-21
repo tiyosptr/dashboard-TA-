@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin'
+import {
+    getLatestLineThroughput,
+    getLineThroughputHistory,
+} from '@/services/calculation/dashboard-line/throughput_line'
+import {
+    computeLineCycleTimeReadOnly,
+    getLineCycleTimeHistory,
+} from '@/services/calculation/dashboard-line/cycletime_line'
 
-// Revalidate every 10 seconds (ISR-style caching)
-export const revalidate = 10
+// Ensure realtime bypass of next.js server cache
+export const dynamic = 'force-dynamic'
 
 /**
  * Resolve data_item IDs matching line and/or PN filters.
@@ -426,7 +434,70 @@ export async function GET(request: NextRequest) {
                 }
             }
 
-            // 4. Notifications summary (only counts, not full data)
+            // 4. Throughput Line — only when lineId is provided
+            if (lineId) {
+                const [latestResult, historyResult] = await Promise.all([
+                    getLatestLineThroughput(lineId),
+                    getLineThroughputHistory(lineId, 20),
+                ])
+
+                const historyData = (historyResult.data ?? []).slice().reverse() // oldest → newest
+
+                result.throughput = {
+                    latest: latestResult.success ? (latestResult.data ?? null) : null,
+                    history: historyResult.success ? historyData : [],
+                }
+            } else {
+                result.throughput = { latest: null, history: [] }
+            }
+
+            // 5. Cycle Time Line — hitung CT = Operating Time / Total Output (VIFG)
+            if (lineId) {
+                // Ambil shiftId dari query param (opsional)
+                const shiftIdParam = searchParams.get('shiftId')
+
+                // Jalankan kalkulasi CT dan ambil history secara paralel
+                const [ctResult, ctHistoryResult] = await Promise.all([
+                    computeLineCycleTimeReadOnly(
+                        lineId,
+                        shiftIdParam,
+                        todayStart,
+                        todayEnd,
+                    ),
+                    getLineCycleTimeHistory(lineId, 20),
+                ])
+
+                const ctHistory = (ctHistoryResult.data ?? []).slice().reverse() // oldest → newest
+
+                result.cycleTimeLine = {
+                    /** Nilai CT saat ini (detik/unit) */
+                    actual_cycle_time: ctResult.actual_cycle_time,
+                    /** Total output VIFG dalam window */
+                    total_output: ctResult.total_output,
+                    /** Durasi shift dalam detik */
+                    operating_time_seconds: ctResult.operating_time_seconds,
+                    /** Nama proses terakhir yang digunakan */
+                    process_name: ctResult.process_name,
+                    /** line_process_id VIFG */
+                    line_process_id: ctResult.line_process_id,
+                    /** Nama shift yang dipakai untuk operating time */
+                    shift_name: ctResult.shift_name,
+                    /** History CT untuk chart (oldest → newest) */
+                    history: ctHistoryResult.success ? ctHistory : [],
+                }
+            } else {
+                result.cycleTimeLine = {
+                    actual_cycle_time: null,
+                    total_output: 0,
+                    operating_time_seconds: 0,
+                    process_name: null,
+                    line_process_id: null,
+                    shift_name: null,
+                    history: [],
+                }
+            }
+
+            // 6. Notifications summary (only counts, not full data)
             const [unreadCount, criticalCount] = await Promise.all([
                 prisma.notification.count({
                     where: { OR: [{ read: { not: 'true' } }, { read: null }] },
@@ -518,7 +589,7 @@ export async function GET(request: NextRequest) {
         // Set cache headers
         return NextResponse.json(result, {
             headers: {
-                'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30',
+                'Cache-Control': 'no-store, max-age=0',
             },
         })
 

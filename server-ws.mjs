@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
-import { WebSocketServer } from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 import dotenv from 'dotenv';
+
+// Polyfill WebSocket globally so Supabase Realtime doesn't time out in Node!
+globalThis.WebSocket = WebSocket;
 
 dotenv.config();
 
@@ -60,6 +63,22 @@ supabase
     (payload) => {
       console.log('🔥 Throughput Change detected:', payload.new.machine_id);
       broadcast({ type: 'THROUGHPUT_UPDATE', machine_id: payload.new.machine_id });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'troughput_line' },
+    (payload) => {
+      console.log('🔥 Line Throughput Change detected:', payload.new.line_id);
+      broadcast({ type: 'LINE_THROUGHPUT_UPDATE', line_id: payload.new.line_id });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'DELETE', schema: 'public', table: 'troughput_line' },
+    (payload) => {
+      // Broadcast juga saat data lama dihapus sebelum insert baru
+      broadcast({ type: 'LINE_THROUGHPUT_UPDATE', line_id: payload.old?.line_id });
     }
   )
   .on(

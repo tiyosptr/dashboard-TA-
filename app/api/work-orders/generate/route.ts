@@ -151,6 +151,29 @@ export async function POST(request: NextRequest) {
       console.log(`Notification ${notificationId} linked to work order ${workOrder.id}`);
     }
 
+    // Automatically sync machine status with the "On Solving" state of this work order
+    if (workOrder.machine_id && workOrderData.type === 'downtime') {
+      try {
+        const baseUrl = request.nextUrl.origin;
+        const statusChangeUrl = `${baseUrl}/api/machines/status-change`;
+        console.log('[WO Generate] Calling status-change endpoint to update machine:', statusChangeUrl);
+
+        const scRes = await fetch(statusChangeUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ machine_id: workOrder.machine_id, new_status: 'downtime' })
+        });
+        
+        if (!scRes.ok) {
+          console.error('[WO Generate] status-change error response:', await scRes.text());
+        } else {
+          console.log('[WO Generate] Machine status successfully synchronized to downtime for:', workOrder.machine_id);
+        }
+      } catch (statusErr) {
+        console.error('[WO Generate] Failed to update machine status:', statusErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {

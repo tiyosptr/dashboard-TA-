@@ -1,1 +1,0 @@
-import { NextResponse } from 'next/server'; import { triggerCycleTimeUpdate } from '@/services/cycle_time_machine'; export async function GET() { const res = await triggerCycleTimeUpdate('8834db33-3e37-4c1f-9727-c87b74c001db'); return NextResponse.json(res); }

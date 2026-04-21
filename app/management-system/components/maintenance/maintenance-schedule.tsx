@@ -71,7 +71,10 @@ export default function MaintenanceSchedule() {
   const [searchTerm, setSearchTerm] = useState('');
   const [lineFilter, setLineFilter] = useState('all');
 
-  const { data: apiResponse, isLoading } = useSWR('/api/maintenance/scheduled', fetcher);
+  const { data: apiResponse, isLoading, isValidating } = useSWR('/api/maintenance/scheduled', fetcher, {
+    refreshInterval: 10000,
+    keepPreviousData: true,
+  });
   const machines = apiResponse?.success ? apiResponse.data : [];
 
   // Get unique lines for filter
@@ -157,9 +160,17 @@ export default function MaintenanceSchedule() {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+      {isLoading && machines.length === 0 ? (
+        <div className="flex items-center justify-center h-[500px] w-full bg-white rounded-3xl shadow-sm border border-slate-100">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center animate-pulse">
+                <Clock size={28} className="text-white" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-400 border-[3px] border-white animate-bounce" />
+            </div>
+            <p className="text-slate-500 font-bold tracking-wide">Memuat Jadwal Pemeliharaan...</p>
+          </div>
         </div>
       ) : filteredMachines.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 bg-white rounded-2xl border border-dashed border-slate-200">

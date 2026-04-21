@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin'
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
     try {
         const searchParams = request.nextUrl.searchParams
@@ -113,7 +115,7 @@ export async function GET(request: NextRequest) {
                     const currentWibM = wibNow.getUTCMinutes();
                     const currentMinutes = currentWibH * 60 + currentWibM;
                     const startMinutes = startH * 60 + startM;
-                    
+
                     if (currentMinutes < startMinutes) {
                         shiftStartDay = day - 1;
                         shiftEndDay = day;
