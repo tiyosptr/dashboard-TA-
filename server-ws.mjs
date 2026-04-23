@@ -54,7 +54,7 @@ supabase
     { event: 'INSERT', schema: 'public', table: 'cycle_time_machine' },
     (payload) => {
       console.log('🔥 Cycle Time Change detected:', payload.new.machine_id);
-      broadcast({ type: 'CYCLE_TIME_UPDATE', machine_id: payload.new.machine_id });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
@@ -62,7 +62,7 @@ supabase
     { event: 'INSERT', schema: 'public', table: 'troughput_machine' },
     (payload) => {
       console.log('🔥 Throughput Change detected:', payload.new.machine_id);
-      broadcast({ type: 'THROUGHPUT_UPDATE', machine_id: payload.new.machine_id });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
@@ -70,15 +70,14 @@ supabase
     { event: 'INSERT', schema: 'public', table: 'troughput_line' },
     (payload) => {
       console.log('🔥 Line Throughput Change detected:', payload.new.line_id);
-      broadcast({ type: 'LINE_THROUGHPUT_UPDATE', line_id: payload.new.line_id });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
     'postgres_changes',
     { event: 'DELETE', schema: 'public', table: 'troughput_line' },
     (payload) => {
-      // Broadcast juga saat data lama dihapus sebelum insert baru
-      broadcast({ type: 'LINE_THROUGHPUT_UPDATE', line_id: payload.old?.line_id });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
@@ -86,8 +85,7 @@ supabase
     { event: 'INSERT', schema: 'public', table: 'data_items' },
     (payload) => {
       console.log('🔥 New Item Added (Pass/Reject):', payload.new.id);
-      // Kita trigger output update agar Pass/Reject count di UI refresh
-      broadcast({ type: 'OUTPUT_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
@@ -95,7 +93,7 @@ supabase
     { event: 'INSERT', schema: 'public', table: 'actual_output' },
     (payload) => {
       console.log('🔥 Output Change detected:', payload.new.id);
-      broadcast({ type: 'OUTPUT_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
@@ -103,7 +101,7 @@ supabase
     { event: 'INSERT', schema: 'public', table: 'defect_by_process' },
     (payload) => {
       console.log('🔥 Defect rate inserted:', payload);
-      broadcast({ type: 'DEFECT_RATE_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
@@ -111,7 +109,7 @@ supabase
     { event: 'UPDATE', schema: 'public', table: 'defect_by_process' },
     (payload) => {
       console.log('🔥 Defect rate updated:', payload);
-      broadcast({ type: 'DEFECT_RATE_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .on(
@@ -128,6 +126,30 @@ supabase
     (payload) => {
       console.log('🔥 Notification updated:', payload.new.id);
       broadcast({ type: 'NOTIFICATION_UPDATE' });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'cycle_time_line' },
+    (payload) => {
+      console.log('🔥 Line Cycle Time Change detected:', payload.new.line_id);
+      broadcast({ type: 'DASHBOARD_UPDATE' });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'machine' },
+    (payload) => {
+      console.log('🔥 Machine Status Change detected:', payload.new.id);
+      broadcast({ type: 'DASHBOARD_UPDATE' });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: '*', schema: 'public', table: 'oee_summary' },
+    (payload) => {
+      console.log('🔥 OEE Change detected');
+      broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
   .subscribe((status, err) => {

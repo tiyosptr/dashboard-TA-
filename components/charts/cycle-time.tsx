@@ -41,8 +41,9 @@ interface CycleTimeProps {
 
 function formatCT(seconds: number | null | undefined): { value: string; unit: string } {
     if (seconds === null || seconds === undefined || seconds <= 0) return { value: '—', unit: '' };
-    if (seconds < 60) return { value: seconds.toFixed(1), unit: 'det/unit' };
-    return { value: (seconds / 60).toFixed(2), unit: 'mnt/unit' };
+    if (seconds < 60) return { value: seconds.toFixed(1), unit: 'sec' };
+    if (seconds < 3600) return { value: (seconds / 60).toFixed(1), unit: 'min' };
+    return { value: (seconds / 3600).toFixed(1), unit: 'hour' };
 }
 
 function formatOperatingTime(seconds: number): string {
@@ -91,11 +92,22 @@ function CycleTime({ className = '', cycleTimeData, lineId, isLoading = false }:
     const operatingTime = cycleTimeData?.operating_time_seconds ?? 0;
     const shiftName = cycleTimeData?.shift_name;
 
+    let chartLabels = labels;
+    let chartValues = values;
+
+    if (displayHistory.length === 0) {
+        chartLabels = ['—', '—', '—', '—', '—'];
+        chartValues = [0, 0, 0, 0, 0];
+    } else if (displayHistory.length === 1) {
+        chartLabels = [labels[0] + ' ', labels[0]];
+        chartValues = [values[0], values[0]];
+    }
+
     // Chart data
     const chartData = {
-        labels: displayHistory.length > 0 ? labels : ['—'],
+        labels: chartLabels,
         datasets: [{
-            data: displayHistory.length > 0 ? values : [0],
+            data: chartValues,
             borderColor: '#6366f1',
             backgroundColor: (context: any) => {
                 const chart = context.chart;
@@ -107,10 +119,10 @@ function CycleTime({ className = '', cycleTimeData, lineId, isLoading = false }:
                 gradient.addColorStop(1, 'rgba(99, 102, 241, 0.01)');
                 return gradient;
             },
-            borderWidth: displayHistory.length <= 1 ? 0 : 2.5,
+            borderWidth: 2.5,
             fill: true,
             tension: 0.4,
-            pointRadius: displayHistory.length <= 3 ? 4 : 0,
+            pointRadius: displayHistory.length <= 2 ? 4 : 2,
             pointHoverRadius: 5,
             pointHoverBackgroundColor: '#6366f1',
             pointHoverBorderColor: '#fff',
@@ -139,8 +151,9 @@ function CycleTime({ className = '', cycleTimeData, lineId, isLoading = false }:
                     label: (ctx: any) => {
                         const val = ctx.parsed.y ?? 0;
                         if (val <= 0) return 'CT: —';
-                        if (val < 60) return `CT: ${val.toFixed(1)} det/unit`;
-                        return `CT: ${(val / 60).toFixed(2)} mnt/unit`;
+                        if (val < 60) return `CT: ${val.toFixed(1)} sec`;
+                        if (val < 3600) return `CT: ${(val / 60).toFixed(1)} min`;
+                        return `CT: ${(val / 3600).toFixed(1)} hour`;
                     },
                 },
             },
@@ -191,7 +204,7 @@ function CycleTime({ className = '', cycleTimeData, lineId, isLoading = false }:
                     )}
                 </div>
 
-                {hasLineId && hasData && (
+                {hasLineId && (
                     <>
                         <div className="h-5 w-px bg-slate-200" />
                         <div className="flex flex-wrap items-center gap-1">

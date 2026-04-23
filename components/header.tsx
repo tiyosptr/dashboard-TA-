@@ -1,13 +1,15 @@
 'use client';
 
 import { memo, useState, useEffect, useRef } from 'react';
-import { Settings, Clock, Activity, Zap, Sun, Sunset, Moon, AlertCircle } from 'lucide-react';
+import { Settings, Clock, Activity, Zap, Sun, Sunset, Moon, AlertCircle, Pause, Play } from 'lucide-react';
 import LineSelector from '@/components/line-selector';
 
 interface HeaderProps {
   onManagementClick?: () => void;
   selectedLineId: string | null;
   onLineChange: (lineId: string | null, lineName: string | null) => void;
+  isPaused?: boolean;
+  onTogglePause?: () => void;
 }
 
 interface ShiftInfo {
@@ -63,7 +65,7 @@ function getShiftStyle(shiftName: string, allShifts: ShiftInfo[], currentId: str
   return styles[order % styles.length];
 }
 
-function Header({ onManagementClick, selectedLineId, onLineChange }: HeaderProps) {
+function Header({ onManagementClick, selectedLineId, onLineChange, isPaused, onTogglePause }: HeaderProps) {
   const [time, setTime] = useState('');
   const [mounted, setMounted] = useState(false);
   const [shiftData, setShiftData] = useState<ShiftResponse | null>(null);
@@ -172,11 +174,21 @@ function Header({ onManagementClick, selectedLineId, onLineChange }: HeaderProps
             <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10">
               <div className="flex items-center gap-1.5">
                 <div className="relative">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <div className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                  {!isPaused && <div className="absolute inset-0 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />}
                 </div>
-                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Live</span>
+                <span className={`text-[10px] font-semibold uppercase tracking-wider ${isPaused ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {isPaused ? 'Paused' : 'Live'}
+                </span>
               </div>
+              <div className="w-px h-3 bg-white/20" />
+              <button 
+                onClick={onTogglePause}
+                title={isPaused ? "Resident Auto Switching" : "Pause Auto Switching"}
+                className={`flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 ${isPaused ? 'text-amber-400' : 'text-slate-400 hover:text-white'}`}
+              >
+                {isPaused ? <Play size={11} fill="currentColor" /> : <Pause size={11} fill="currentColor" />}
+              </button>
               <div className="w-px h-3 bg-white/20" />
               <div className="flex items-center gap-1">
                 <Clock size={11} className="text-slate-400" />

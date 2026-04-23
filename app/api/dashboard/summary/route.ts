@@ -6,9 +6,13 @@ import {
     getLineThroughputHistory,
 } from '@/services/calculation/dashboard-line/throughput_line'
 import {
-    computeLineCycleTimeReadOnly,
+    computeLineCycleTimeRealtime,
     getLineCycleTimeHistory,
 } from '@/services/calculation/dashboard-line/cycletime_line'
+import {
+    computeLineAvailabilityReadOnly,
+    saveLineAvailability,
+} from '@/services/calculation/dashboard-line/oee_line'
 
 // Ensure realtime bypass of next.js server cache
 export const dynamic = 'force-dynamic'
@@ -253,6 +257,18 @@ export async function GET(request: NextRequest) {
             const todayEnd = new Date(todayStart)
             todayEnd.setHours(23, 59, 59, 999)
 
+            // Tentukan shiftId yang benar
+            let actualShiftId = searchParams.get('shiftId')
+            if (!actualShiftId) {
+                const shiftName = `SHIFT-${shift}`
+                const { data: shiftData } = await supabaseAdmin
+                    .from('shift')
+                    .select('id')
+                    .eq('shift_name', shiftName)
+                    .maybeSingle()
+                if (shiftData) actualShiftId = shiftData.id
+            }
+
             // 1. Actual Output — filtered by data_item IDs (today only)
             const actualOutputs = await queryActualOutput(dataItemIds, todayStart, todayEnd)
 
@@ -299,43 +315,71 @@ export async function GET(request: NextRequest) {
                 },
             }
 
-            // 2. OEE (fetched from oee_summary table)
-            const dateOnlyStr = todayStart.toISOString().split('T')[0]
-
-            let oeeQuery = supabaseAdmin
-                .from('oee_summary')
-                .select('availability, performance, quality, oee')
-                .eq('date', dateOnlyStr)
-
+            // 2. OEE — hitung Availability live dari oee_line service
             if (lineId) {
-                oeeQuery = oeeQuery.eq('line_id', lineId)
-            }
-
-            const { data: oeeRecords, error: oeeError } = await oeeQuery
-
-            if (oeeError) {
-                console.error('Error fetching OEE data:', oeeError)
-            }
-
-            if (oeeRecords && oeeRecords.length > 0) {
-                const avgAvailability = oeeRecords.reduce((sum, r) => sum + Number(r.availability || 0), 0) / oeeRecords.length
-                const avgPerformance = oeeRecords.reduce((sum, r) => sum + Number(r.performance || 0), 0) / oeeRecords.length
-                const avgQuality = oeeRecords.reduce((sum, r) => sum + Number(r.quality || 0), 0) / oeeRecords.length
-                const avgOee = oeeRecords.reduce((sum, r) => sum + Number(r.oee || 0), 0) / oeeRecords.length
+                // Hitung availability real-time
+                const availData = await computeLineAvailabilityReadOnly(
+                    lineId,
+                    actualShiftId,
+                    todayStart,
+                )
+                // Simpan ke DB secara async (tidak blocking response)
+                // Ambil line_process_id (VIFG / proses terakhir) untuk FK
+                supabaseAdmin
+                    .from('line_process')
+                    .select('id')
+                    .eq('line_id', lineId)
+                    .order('process_order', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+                    .then(({ data: lastLp }) => {
+                        if (lastLp?.id) {
+                            saveLineAvailability(
+                                lineId,
+                                lastLp.id,
+                                null, // actual_output_id
+                                null, // machine_status_log_id
+                                availData.shift_id ?? undefined,
+                                todayStart,
+                            ).catch((e) =>
+                                console.warn('[oee_line] async save error:', e)
+                            );
+                        }
+                    });
 
                 result.oee = {
-                    availability: Math.round(avgAvailability * 10000) / 100,
-                    performance: Math.round(avgPerformance * 10000) / 100,
-                    quality: Math.round(avgQuality * 10000) / 100,
-                    oee: Math.round(avgOee * 10000) / 100,
+                    availability: availData.availability_pct,
+                    performance: 0,   // Performance akan diisi fase berikutnya
+                    quality: availData.quality_pct,
+                    oee: 0,
+                    // Detail tambahan untuk debugging / tooltip
+                    _detail: {
+                        planned_production_min: Math.round(availData.planned_production_seconds / 60),
+                        operating_time_min:     Math.round(availData.operating_time_seconds / 60),
+                        unplanned_downtime_min: Math.round(availData.unplanned_downtime_seconds / 60),
+                        scheduled_maintenance_min: Math.round(availData.scheduled_maintenance_seconds / 60),
+                        scheduled_machines_count: availData.scheduled_machines_count,
+                        shift_name: availData.shift_name,
+                    },
                 }
             } else {
-                // Fallback to 0 if no data saved yet or missing
-                result.oee = {
-                    availability: 0,
-                    performance: 0,
-                    quality: 0,
-                    oee: 0,
+                // Tanpa lineId: coba baca riwayat oee_line terbaru
+                const { data: recentOee } = await supabaseAdmin
+                    .from('oee_line')
+                    .select('availability, perfomance, quality, oee_line')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle()
+
+                if (recentOee) {
+                    result.oee = {
+                        availability: Math.round(Number(recentOee.availability || 0) * 10000) / 100,
+                        performance:  Math.round(Number(recentOee.perfomance  || 0) * 10000) / 100,
+                        quality:      Math.round(Number(recentOee.quality     || 0) * 10000) / 100,
+                        oee:          Math.round(Number(recentOee.oee_line    || 0) * 10000) / 100,
+                    }
+                } else {
+                    result.oee = { availability: 0, performance: 0, quality: 0, oee: 0 }
                 }
             }
 
@@ -434,38 +478,22 @@ export async function GET(request: NextRequest) {
                 }
             }
 
-            // 4. Throughput Line — only when lineId is provided
-            if (lineId) {
-                const [latestResult, historyResult] = await Promise.all([
-                    getLatestLineThroughput(lineId),
-                    getLineThroughputHistory(lineId, 20),
-                ])
-
-                const historyData = (historyResult.data ?? []).slice().reverse() // oldest → newest
-
-                result.throughput = {
-                    latest: latestResult.success ? (latestResult.data ?? null) : null,
-                    history: historyResult.success ? historyData : [],
-                }
-            } else {
-                result.throughput = { latest: null, history: [] }
-            }
-
-            // 5. Cycle Time Line — hitung CT = Operating Time / Total Output (VIFG)
+            // 4. Cycle Time Line — hitung CT = Operating Time / Total Output (VIFG)
+            let ctResultMain: any = null;
             if (lineId) {
                 // Ambil shiftId dari query param (opsional)
                 const shiftIdParam = searchParams.get('shiftId')
 
                 // Jalankan kalkulasi CT dan ambil history secara paralel
                 const [ctResult, ctHistoryResult] = await Promise.all([
-                    computeLineCycleTimeReadOnly(
+                    computeLineCycleTimeRealtime(
                         lineId,
-                        shiftIdParam,
-                        todayStart,
-                        todayEnd,
+                        actualShiftId, // Re-use the fetched shiftId here too
                     ),
                     getLineCycleTimeHistory(lineId, 20),
                 ])
+                
+                ctResultMain = ctResult;
 
                 const ctHistory = (ctHistoryResult.data ?? []).slice().reverse() // oldest → newest
 
@@ -497,6 +525,23 @@ export async function GET(request: NextRequest) {
                 }
             }
 
+            // 5. Throughput Line — fetch from database (it's already calculated and saved per output)
+            if (lineId) {
+                const [latestResult, historyResult] = await Promise.all([
+                    getLatestLineThroughput(lineId),
+                    getLineThroughputHistory(lineId, 20)
+                ]);
+
+                const historyData = (historyResult.data ?? []).slice().reverse(); // oldest → newest
+
+                result.throughput = {
+                    latest: latestResult.success ? latestResult.data : null,
+                    history: historyResult.success ? historyData : [],
+                }
+            } else {
+                result.throughput = { latest: null, history: [] }
+            }
+
             // 6. Notifications summary (only counts, not full data)
             const [unreadCount, criticalCount] = await Promise.all([
                 prisma.notification.count({
@@ -513,6 +558,82 @@ export async function GET(request: NextRequest) {
             result.notifications = {
                 unreadCount,
                 criticalCount,
+            }
+
+            // 7. Defect By Process - filtered by lineId 
+            if (lineId) {
+                const shiftIdParam = searchParams.get('shiftId');
+                const dYear = todayStart.getFullYear();
+                const dMonth = String(todayStart.getMonth() + 1).padStart(2, '0');
+                const dDate = String(todayStart.getDate()).padStart(2, '0');
+                const dateOnlyStr = `${dYear}-${dMonth}-${dDate}`;
+
+                // Fetch all line_processes for the line
+                const { data: lpData } = await supabaseAdmin
+                    .from('line_process')
+                    .select('id, process_order, process(name)')
+                    .eq('line_id', lineId)
+                    .order('process_order', { ascending: true });
+
+                const lpList = lpData || [];
+                const lpIds = lpList.map((lp: any) => lp.id);
+
+                // Get defect records from defect_by_process table
+                let dbpQuery = supabaseAdmin
+                    .from('defect_by_process')
+                    .select('line_process_id, total_produced, total_pass, total_reject')
+                    .eq('line_id', lineId)
+                    .eq('recorded_date', dateOnlyStr);
+
+                if (shiftIdParam) {
+                    dbpQuery = dbpQuery.eq('shift_id', shiftIdParam);
+                }
+
+                const { data: dbpRecords } = await dbpQuery;
+                const dbpData = dbpRecords || [];
+
+                // Count actual data_items per line_process today (pass + reject)
+                // This is the real "Produced" count from source data
+                let dataItemsCountMap: Record<string, number> = {};
+                if (lpIds.length > 0) {
+                    const rawCounts = await chunkedInQuery(
+                        'data_items',
+                        'line_process_id',
+                        'line_process_id',
+                        lpIds,
+                        (q: any) => q
+                            .gte('created_at', todayStart.toISOString())
+                            .lte('created_at', todayEnd.toISOString())
+                    );
+                    rawCounts.forEach((row: any) => {
+                        const lpId = row.line_process_id;
+                        if (lpId) {
+                            dataItemsCountMap[lpId] = (dataItemsCountMap[lpId] || 0) + 1;
+                        }
+                    });
+                }
+
+                result.defectByProcess = lpList.map((lp: any) => {
+                    const recs = dbpData.filter((r: any) => r.line_process_id === lp.id);
+                    let tPass = 0; let tRej = 0;
+                    recs.forEach((r: any) => {
+                        tPass += Number(r.total_pass || 0);
+                        tRej += Number(r.total_reject || 0);
+                    });
+                    // Use actual data_items count as real produced
+                    const realProduced = dataItemsCountMap[lp.id] || 0;
+                    const rate = realProduced > 0 ? (tRej / realProduced) * 100 : 0;
+                    return {
+                        lineProcessId: lp.id,
+                        processName: lp.process?.name || 'Unknown',
+                        totalProduced: realProduced,
+                        totalPass: tPass,
+                        totalReject: tRej,
+                        defectRate: Math.round(rate * 100) / 100
+                    };
+                });
+            } else {
+                result.defectByProcess = [];
             }
         }
 

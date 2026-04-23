@@ -71,6 +71,7 @@ export default function Home() {
   const [selectedLineName, setSelectedLineName] = useState<string | null>(null);
   const [selectedPnId, setSelectedPnId] = useState<string | null>(null);
   const [selectedPn, setSelectedPn] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
   const router = useRouter();
 
   // =========================================================
@@ -110,11 +111,13 @@ export default function Home() {
 
   // Auto-rotate between Dashboard and Analysis every 10 seconds
   useEffect(() => {
+    if (isPaused) return;
+
     const interval = setInterval(() => {
       setShowAnalysis(prev => !prev);
     }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isPaused]);
 
   // Global Realtime WebSocket for Dashboard
   useEffect(() => {
@@ -122,8 +125,8 @@ export default function Home() {
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'MACHINE_STATUS_UPDATE') {
-          console.log('[ws] Dashboard detected machine status change. Refreshing...');
+        if (data.type === 'DASHBOARD_UPDATE') {
+          console.log('[ws] Dashboard update detected. Refreshing...');
           mutate();
         }
       } catch (err) { }
@@ -226,7 +229,11 @@ export default function Home() {
 
         {/* BOTTOM ROW: Defect FULL WIDTH - Height: 28% */}
         <div className="w-full" style={{ height: '28%' }}>
-          <DefectRejectChart className="h-full w-full" />
+          <DefectRejectChart 
+              className="h-full w-full" 
+              defectData={dashboardData?.defectByProcess}
+              actualOutputData={dashboardData?.actualOutput}
+          />
         </div>
 
       </div>
@@ -282,6 +289,8 @@ export default function Home() {
         onManagementClick={handleManagementSystem}
         selectedLineId={selectedLineId}
         onLineChange={handleLineChange}
+        isPaused={isPaused}
+        onTogglePause={() => setIsPaused(prev => !prev)}
       />
 
       <DowntimeAlert selectedLineId={selectedLineId} />

@@ -158,6 +158,16 @@ export interface DashboardSummary {
         output: number
         reject: number
     }[]
+
+    // Defect by Process data
+    defectByProcess?: {
+        lineProcessId: string;
+        processName: string;
+        totalProduced: number;
+        totalPass: number;
+        totalReject: number;
+        defectRate: number;
+    }[]
 }
 
 // SWR fetcher with error handling
@@ -243,5 +253,6 @@ export function useDashboardData({
         cycleTimeLine: data?.cycleTimeLine,
         trend: data?.trend,
         history: data?.history,
+        defectByProcess: data?.defectByProcess,
     }
 }

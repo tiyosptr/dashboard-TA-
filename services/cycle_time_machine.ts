@@ -350,18 +350,13 @@ export async function getCycleTimeHistory(
 // ─── Format helpers ───────────────────────────────────────────────
 export function formatCycleTime(value: number | null): string {
     if (value === null || value <= 0) return '—';
-    // value SEKARANG adalah "Detik per Item" (Durasi)
     const sec = value;
     if (sec < 60) {
         return `${sec.toFixed(1)} sec`;
     } else if (sec < 3600) {
-        const m = Math.floor(sec / 60);
-        const s = Math.round(sec % 60);
-        return s > 0 ? `${m} min ${s} sec` : `${m} min`;
+        return `${(sec / 60).toFixed(1)} min`;
     } else {
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        return m > 0 ? `${h} hr ${m} min` : `${h} hr`;
+        return `${(sec / 3600).toFixed(1)} hour`;
     }
 }
 

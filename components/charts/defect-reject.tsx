@@ -6,6 +6,21 @@ interface DefectRejectBarChartProps {
     width?: string | number;
     height?: string | number;
     className?: string;
+    defectData?: {
+        lineProcessId: string;
+        processName: string;
+        totalProduced: number;
+        totalPass: number;
+        totalReject: number;
+        defectRate: number;
+    }[];
+    actualOutputData?: {
+        summary?: {
+             totalProduced: number;
+             totalReject: number;
+             qualityRate: number;
+        };
+    };
 }
 
 interface DefectProcess {
@@ -18,28 +33,52 @@ interface DefectProcess {
 
 function DefectRejectBarChart({
     className = '',
+    defectData = [],
+    actualOutputData,
 }: DefectRejectBarChartProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const scrollDirectionRef = useRef(1);
     const [isHovered, setIsHovered] = useState(false);
 
+    // Hitung total dari semua proses di defectData (real produced dari data_items)
+    const totalProd = defectData.reduce((acc, curr) => acc + curr.totalProduced, 0);
+    const totalDef = defectData.reduce((acc, curr) => acc + curr.totalReject, 0);
+    const defRate = totalProd > 0 ? (totalDef / totalProd) * 100 : 0;
+
     const stats = {
-        totalProduced: 45780,
-        totalDefect: 1247,
-        defectRate: 2.72,
-        trend: -0.3,
+        totalProduced: totalProd,
+        totalDefect: totalDef,
+        defectRate: defRate.toFixed(2),
+        trend: 0, // no history trend for now
     };
 
-    const defectByProcess: DefectProcess[] = [
-        { process: 'Extrusion', defectCount: 420, percentage: 33.7, color: '#ef4444', gradient: 'from-red-500 to-red-400' },
-        { process: 'Molding', defectCount: 315, percentage: 25.3, color: '#f59e0b', gradient: 'from-amber-500 to-amber-400' },
-        { process: 'Assembly', defectCount: 245, percentage: 19.6, color: '#6366f1', gradient: 'from-indigo-500 to-indigo-400' },
-        { process: 'Coating', defectCount: 178, percentage: 14.3, color: '#8b5cf6', gradient: 'from-violet-500 to-violet-400' },
-        { process: 'Packaging', defectCount: 89, percentage: 7.1, color: '#64748b', gradient: 'from-slate-500 to-slate-400' },
-        { process: 'Testing', defectCount: 67, percentage: 5.4, color: '#10b981', gradient: 'from-emerald-500 to-emerald-400' },
-        { process: 'Inspection', defectCount: 33, percentage: 2.6, color: '#f97316', gradient: 'from-orange-500 to-orange-400' },
-        { process: 'QC', defectCount: 25, percentage: 2.0, color: '#ec4899', gradient: 'from-pink-500 to-pink-400' },
+    const gradientPresets = [
+        'from-red-500 to-red-400',
+        'from-amber-500 to-amber-400',
+        'from-indigo-500 to-indigo-400',
+        'from-violet-500 to-violet-400',
+        'from-slate-500 to-slate-400',
+        'from-emerald-500 to-emerald-400',
+        'from-orange-500 to-orange-400',
+        'from-pink-500 to-pink-400'
     ];
+
+    const colors = [
+        '#ef4444', '#f59e0b', '#6366f1', '#8b5cf6', '#64748b', '#10b981', '#f97316', '#ec4899'
+    ];
+
+    const defectByProcess: DefectProcess[] = defectData
+        .filter(d => d.totalReject > 0)
+        .map((d, index) => {
+            const p = totalDef > 0 ? (d.totalReject / totalDef) * 100 : 0;
+            return {
+                process: d.processName,
+                defectCount: d.totalReject,
+                percentage: Math.round(p * 10) / 10,
+                color: colors[index % colors.length],
+                gradient: gradientPresets[index % gradientPresets.length]
+            };
+        }).sort((a, b) => b.defectCount - a.defectCount);
 
     // Auto-scroll logic (7 seconds total duration)
     useEffect(() => {
@@ -107,7 +146,11 @@ function DefectRejectBarChart({
             <div className="flex gap-2 mb-2 flex-shrink-0">
                 <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-lg px-3 py-1.5 flex-1 text-center border border-indigo-100">
                     <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Produced</div>
-                    <div className="text-sm font-black text-indigo-700">{(stats.totalProduced / 1000).toFixed(1)}K</div>
+                    <div className="text-sm font-black text-indigo-700">
+                        {stats.totalProduced >= 1000
+                            ? `${(stats.totalProduced / 1000).toFixed(1)}K`
+                            : stats.totalProduced.toLocaleString()}
+                    </div>
                 </div>
                 <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 rounded-lg px-3 py-1.5 flex-1 text-center border border-rose-100">
                     <div className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Defect</div>

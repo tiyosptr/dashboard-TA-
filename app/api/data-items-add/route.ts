@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
         // Trigger LINE throughput calculation (hanya jika proses VIFG / last process)
         // ΔQ diambil dari VIFG saja → tidak ada double counting antar proses
         let lineThroughputResult = null;
+        let lineCycleTimeResult = null;
         if (isVifg && lpData?.process) {
             // Ambil line_id dari line_process
             const { data: lpFull } = await supabaseAdmin
@@ -97,6 +98,24 @@ export async function POST(request: NextRequest) {
                     10  // window 10 menit
                 );
                 console.log('[data-items-add] Line throughput result:', JSON.stringify(lineThroughputResult));
+
+                // TRIGGER LINE CYCLE TIME
+                const { getActiveShiftWindow } = await import('@/services/calculation/shift-window');
+                const { calculateLineCycleTime } = await import('@/services/calculation/dashboard-line/cycletime_line');
+                const shiftWindow = await getActiveShiftWindow();
+                if (shiftWindow) {
+                    const now = new Date();
+                    // Gunakan batas hari ini sebagai window
+                    const todayStart = new Date(now);
+                    todayStart.setHours(0, 0, 0, 0);
+                    lineCycleTimeResult = await calculateLineCycleTime(
+                        lpFull.line_id,
+                        shiftWindow.shift_id,
+                        todayStart,
+                        now
+                    );
+                    console.log('[data-items-add] Line cycle time result:', JSON.stringify(lineCycleTimeResult));
+                }
             }
         }
 
@@ -108,6 +127,7 @@ export async function POST(request: NextRequest) {
             throughput_debug: throughputResult,
             defect_rate_debug: defectResult,
             line_throughput_debug: lineThroughputResult,
+            line_cycletime_debug: lineCycleTimeResult,
         }, { status: 201 });
     } catch (err) {
         console.error('Unexpected error:', err);

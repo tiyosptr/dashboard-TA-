@@ -21,6 +21,8 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
+import { calculateElapsedShiftTime } from '@/utils/helpers';
+import { getActiveShiftWindow } from '../shift-window';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,70 +63,6 @@ interface LineProcessRow {
     process_order: number;
     process_name: string;
     is_vifg: boolean;
-}
-
-// ─── Helper: Deteksi shift aktif berdasarkan waktu saat ini ──────────────────
-
-/**
- * Mengambil shift yang sedang aktif saat ini dari tabel public.shift.
- *
- * Logika pencocokan waktu:
- *   - Shift normal   (start < end)  : start_time <= now <= end_time
- *   - Shift tengah malam (start > end): now >= start_time ATAU now <= end_time
- *     Contoh: SHIFT-3 23:00-07:00 → aktif saat jam 23:xx ATAU jam 00:xx-07:xx
- *
- * @returns { shift_id, shift_name } atau null jika tidak ada shift aktif
- */
-export async function getCurrentActiveShift(): Promise<{
-    shift_id: string;
-    shift_name: string;
-} | null> {
-    try {
-        const { data: shifts, error } = await supabaseAdmin
-            .from('shift')
-            .select('id, shift_name, start_time, end_time');
-
-        if (error || !shifts || shifts.length === 0) {
-            console.warn('[throughput_line] Tidak dapat mengambil data shift:', error?.message);
-            return null;
-        }
-
-        // Waktu sekarang dalam format HH:MM (lokal server)
-        const now = new Date();
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-        for (const shift of shifts) {
-            // Parse "HH:MM:SS" → menit sejak midnight
-            const parseTime = (t: string): number => {
-                const [h, m] = t.split(':').map(Number);
-                return h * 60 + (m || 0);
-            };
-
-            const startMin = parseTime(shift.start_time);
-            const endMin   = parseTime(shift.end_time);
-
-            let isActive: boolean;
-
-            if (startMin < endMin) {
-                // Shift normal: 07:00–15:00 atau 15:00–23:00
-                isActive = currentMinutes >= startMin && currentMinutes < endMin;
-            } else {
-                // Shift tengah malam: 23:00–07:00
-                isActive = currentMinutes >= startMin || currentMinutes < endMin;
-            }
-
-            if (isActive) {
-                console.log('[throughput_line] Shift aktif:', shift.shift_name, '(', shift.start_time, '-', shift.end_time, ')');
-                return { shift_id: shift.id, shift_name: shift.shift_name };
-            }
-        }
-
-        console.warn('[throughput_line] Tidak ada shift yang cocok dengan jam saat ini:', now.toLocaleTimeString());
-        return null;
-    } catch (err: any) {
-        console.error('[throughput_line] Exception saat cari shift:', err.message);
-        return null;
-    }
 }
 
 // ─── Helper: Ambil semua line_process untuk satu line ────────────────────────
@@ -181,17 +119,21 @@ export async function calculateLineThroughput(
     try {
         console.log('[throughput_line] ▶ START | line_id:', line_id, '| window:', windowMinutes, 'min');
 
-        // ── 1. Auto-deteksi shift jika belum disediakan ───────────────────
-        let activeShiftId   = shift_id ?? null;
-        let activeShiftName: string | null = null;
-
-        if (!activeShiftId) {
-            const activeShift = await getCurrentActiveShift();
-            if (activeShift) {
-                activeShiftId   = activeShift.shift_id;
-                activeShiftName = activeShift.shift_name;
-            }
+        // ── 1. Ambil / Deteksi Shift Window ──────────────────────────
+        const shiftWindow = await getActiveShiftWindow(shift_id);
+        if (!shiftWindow) {
+            return {
+                success: false, step: 'detect_shift', line_id,
+                error: 'No active shift found',
+            };
         }
+
+        const { 
+            shift_id: activeShiftId, 
+            shift_name: activeShiftName,
+            shift_start_ts,
+            shift_end_ts
+        } = shiftWindow;
 
         console.log('[throughput_line] Shift aktif:', activeShiftId, '|', activeShiftName);
 
@@ -234,67 +176,29 @@ export async function calculateLineThroughput(
             };
         }
 
-        // ── 4. ΔQ ─────────────────────────────────────────────────────────
-        const deltaQ = vifgItems?.length ?? 0;
-
-        if (deltaQ === 0) {
-            console.log('[throughput_line] ΔQ = 0 — tidak ada unit pass di VIFG dalam window.');
-            await insertThroughputLine({
-                line_id, line_process_id, data_items_id: null,
-                actual_troughput: 0, shift_id: activeShiftId,
-                rate: 0, total_pass: 0, eff: 0, interval_time: windowMinutes,
-            });
-            return {
-                success: true, step: 'done_zero', line_id, line_process_id,
-                last_process_name: process_name, shift_id: activeShiftId,
-                shift_name: activeShiftName, total_pass: 0,
-                interval_minutes: 0, actual_throughput: 0, rate: 0,
-            };
-        }
-
-        // ── 5. Δt: MAX(VIFG) − MIN(first process) ────────────────────────
-        const maxVifgTs      = new Date(vifgItems![vifgItems!.length - 1].created_at).getTime();
-        const latestVifgItem = vifgItems![vifgItems!.length - 1];
-
-        const vifgSns: string[] = vifgItems!
-            .map(item => item.sn)
-            .filter((sn): sn is string => !!sn);
-
-        let minFirstProcessTs: number | null = null;
-
-        if (vifgSns.length > 0 && firstProcess.id !== line_process_id) {
-            const { data: firstItems, error: firstError } = await supabaseAdmin
+        // ── 3b. Hitung Total Pass dalam Shift (Cumulative) ────────────────
+        let totalPassInShift = 0;
+        if (shift_start_ts && shift_end_ts) {
+            const { count, error: countError } = await supabaseAdmin
                 .from('data_items')
-                .select('sn, created_at')
-                .eq('line_process_id', firstProcess.id)
-                .in('sn', vifgSns)
-                .order('created_at', { ascending: true })
-                .limit(1);
-
-            if (!firstError && firstItems && firstItems.length > 0) {
-                minFirstProcessTs = new Date(firstItems[0].created_at).getTime();
+                .select('*', { count: 'exact', head: true })
+                .eq('line_process_id', line_process_id)
+                .eq('status', 'pass')
+                .gte('created_at', shift_start_ts)
+                .lte('created_at', shift_end_ts);
+            
+            if (!countError) {
+                totalPassInShift = count || 0;
             }
         }
 
-        // Fallback ke MIN(VIFG created_at) jika proses pertama tidak ada datanya
-        if (minFirstProcessTs === null) {
-            minFirstProcessTs = new Date(vifgItems![0].created_at).getTime();
-        }
+        // ── 4. Hitung Throughput Rata-rata Shift (Kumulatif) ────────────────
+        // Rumus: Total Pass / Waktu Shift Berjalan (Jam)
+        const elapsedSeconds = calculateElapsedShiftTime(shift_start_ts, shift_end_ts);
+        const elapsedHours   = Math.max(elapsedSeconds, 1) / 3600; // minimal 1 detik
+        const actualThroughput = Math.round(totalPassInShift / elapsedHours);
 
-        const deltaTMs      = maxVifgTs - minFirstProcessTs;
-        const deltaTHours   = deltaTMs / (1000 * 60 * 60);
-        const deltaTMinutes = deltaTMs / (1000 * 60);
-
-        console.log(`[throughput_line] ΔQ=${deltaQ} | Δt=${deltaTMinutes.toFixed(2)} menit`);
-
-        // ── 6. T = ΔQ / Δt ────────────────────────────────────────────────
-        let actualThroughput: number;
-        if (deltaTHours < 1 / 3600) {
-            actualThroughput = deltaQ / (windowMinutes / 60);
-        } else {
-            actualThroughput = deltaQ / deltaTHours;
-        }
-        actualThroughput = Math.round(actualThroughput * 100) / 100;
+        console.log(`[throughput_line] Result: ${actualThroughput} unit/h (Total=${totalPassInShift}, Hours=${elapsedHours.toFixed(2)})`);
 
         // ── 7. Rate dan Efficiency ────────────────────────────────────────
         const rate = target_per_hour > 0
@@ -306,20 +210,29 @@ export async function calculateLineThroughput(
 
         // ── 8. INSERT ke troughput_line (tanpa delete) ────────────────────
         await insertThroughputLine({
-            line_id, line_process_id,
-            data_items_id: latestVifgItem.id,
+            line_id,
+            line_process_id,
+            data_items_id: null,
             actual_troughput: actualThroughput,
             shift_id: activeShiftId,
-            rate, total_pass: deltaQ, eff,
-            interval_time: Math.round(deltaTMinutes * 100) / 100,
+            total_pass: totalPassInShift,
+            rate,
+            eff,
+            interval_time: Math.round(elapsedSeconds / 60),
         });
 
         return {
-            success: true, step: 'done', line_id, line_process_id,
-            last_process_name: process_name, shift_id: activeShiftId,
-            shift_name: activeShiftName, total_pass: deltaQ,
-            interval_minutes: Math.round(deltaTMinutes * 100) / 100,
-            actual_throughput: actualThroughput, rate,
+            success: true,
+            step: 'done',
+            line_id,
+            line_process_id,
+            last_process_name: process_name,
+            shift_id: activeShiftId,
+            shift_name: activeShiftName,
+            total_pass: totalPassInShift,
+            interval_minutes: Math.round(elapsedSeconds / 60),
+            actual_throughput: actualThroughput,
+            rate,
         };
 
     } catch (err: any) {

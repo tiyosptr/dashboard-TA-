@@ -87,18 +87,14 @@ function formatDurationFromHours(hoursStr: string | null): string {
 
 // ─── Format cycle time (seconds per item) for display ───────────────
 function formatCycleTimeDisplay(val: number | null | undefined): string {
-  if (!val || val <= 0) return '0s';
+  if (!val || val <= 0) return '0 sec';
   if (val < 60) {
-    return `${val.toFixed(1)}s`;
+    return `${val.toFixed(1)} sec`;
   }
-  const hours = Math.floor(val / 3600);
-  const remainingSecs = val % 3600;
-  const mins = Math.floor(remainingSecs / 60);
-  const secs = (remainingSecs % 60).toFixed(0);
-  if (hours > 0) {
-    return `${hours}h ${mins}m ${secs}s`;
+  if (val < 3600) {
+    return `${(val / 60).toFixed(1)} min`;
   }
-  return `${mins}m ${secs}s`;
+  return `${(val / 3600).toFixed(1)} hour`;
 }
 
 // ─── Status Helpers ──────────────────────────────────────────────────
@@ -489,22 +485,10 @@ function MachineDetailModal({
 
   // Format cycle time value for display (items per second)
   const formatCTValue = (val: number) => {
-    // val is total seconds per item
-    if (!val || val <= 0) return '0s';
-
-    if (val < 60) {
-      return `${val.toFixed(1)}s`;
-    }
-
-    const hours = Math.floor(val / 3600);
-    const remainingSecs = val % 3600;
-    const mins = Math.floor(remainingSecs / 60);
-    const secs = (remainingSecs % 60).toFixed(0);
-
-    if (hours > 0) {
-      return `${hours}h ${mins}m ${secs}s`;
-    }
-    return `${mins}m ${secs}s`;
+    if (!val || val <= 0) return '0 sec';
+    if (val < 60) return `${val.toFixed(1)} sec`;
+    if (val < 3600) return `${(val / 60).toFixed(1)} min`;
+    return `${(val / 3600).toFixed(1)} hour`;
   };
 
   // Help format cycle time chart Y-axis labels for duration

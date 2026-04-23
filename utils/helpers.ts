@@ -1,19 +1,19 @@
 // Date formatting
 export const formatDate = (date: string | Date, format: 'short' | 'long' | 'full' = 'short') => {
   const d = new Date(date);
-  
-  switch(format) {
+
+  switch (format) {
     case 'short':
       return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
     case 'long':
       return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     case 'full':
-      return d.toLocaleString('id-ID', { 
-        day: 'numeric', 
-        month: 'long', 
-        year: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit' 
+      return d.toLocaleString('id-ID', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       });
     default:
       return d.toLocaleDateString('id-ID');
@@ -25,7 +25,8 @@ export const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
-    minimumFractionDigits: 0,}).format(amount);
+    minimumFractionDigits: 0,
+  }).format(amount);
 };
 
 // Number formatting
@@ -118,11 +119,11 @@ export const exportToCSV = (data: any[], filename: string) => {
   const headers = Object.keys(data[0]);
   const csvContent = [
     headers.join(','),
-    ...data.map(row => 
+    ...data.map(row =>
       headers.map(header => {
         const value = row[header];
-        return typeof value === 'string' && value.includes(',') 
-          ? `"${value}"` 
+        return typeof value === 'string' && value.includes(',')
+          ? `"${value}"`
           : value;
       }).join(',')
     )
@@ -131,11 +132,11 @@ export const exportToCSV = (data: any[], filename: string) => {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   const url = URL.createObjectURL(blob);
-  
+
   link.setAttribute('href', url);
   link.setAttribute('download', `${filename}.csv`);
   link.style.visibility = 'hidden';
-  
+
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -157,4 +158,51 @@ export const debounce = <T extends (...args: any[]) => any>(
 export const truncateText = (text: string, maxLength: number) => {
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '...';
-};  
+};
+
+// Merge overlapping intervals algorithm
+export const calculateTotalDowntime = (intervals: { start: number; end: number }[]) => {
+  if (!intervals || intervals.length === 0) return 0;
+
+  // Urutkan berdasarkan start_time
+  const sorted = [...intervals].sort((a, b) => a.start - b.start);
+
+  let merged: { start: number; end: number }[] = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i];
+    const lastMerged = merged[merged.length - 1];
+
+    if (current.start <= lastMerged.end) {
+      // Overlap: merge
+      lastMerged.end = Math.max(lastMerged.end, current.end);
+    } else {
+      // Tidak overlap: tambah baru
+      merged.push(current);
+    }
+  }
+
+  // Hitung total durasi murni
+  return merged.reduce((total, interval) => total + (interval.end - interval.start), 0);
+};
+
+/**
+ * Menghitung waktu shift yang sudah berjalan (Elapsed) 
+ * dari awal shift sampai sekarang (Actual Time).
+ */
+export const calculateElapsedShiftTime = (
+  shiftStart: Date | string,
+  shiftEnd: Date | string
+): number => {
+  const now = new Date();
+  const start = new Date(shiftStart);
+  const end = new Date(shiftEnd);
+
+  let elapsedFromStart = 0;
+  if (now >= start) {
+    const refEnd = now < end ? now : end;
+    elapsedFromStart = (refEnd.getTime() - start.getTime()) / 1000;
+  }
+
+  return Math.max(0, elapsedFromStart);
+};

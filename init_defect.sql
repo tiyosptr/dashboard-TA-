@@ -1,0 +1,20 @@
+create table if not exists public.defect_by_process (
+  id uuid not null default gen_random_uuid (),
+  line_id uuid not null,
+  line_process_id uuid not null,
+  shift_id uuid null,
+  recorded_date date not null default CURRENT_DATE,
+  recorded_hour integer null,
+  total_produced bigint not null default 0,
+  total_pass bigint not null default 0,
+  total_reject bigint not null default 0,
+  created_at timestamp with time zone null default now(),
+  updated_at timestamp with time zone null default now(),
+  constraint defect_by_process_pkey primary key (id),
+  constraint defect_by_process_line_id_fkey foreign KEY (line_id) references line(id),
+  constraint defect_by_process_line_process_id_fkey foreign KEY (line_process_id) references line_process (id),
+  constraint defect_by_process_shift_id_fkey foreign KEY (shift_id) references shift (id),
+  constraint chk_reject_not_exceed_produced check ((total_reject <= total_produced)),
+  constraint chk_total_produced_positive check ((total_produced >= 0)),
+  constraint chk_pass_not_exceed_produced check ((total_pass <= total_produced))
+) TABLESPACE pg_default;

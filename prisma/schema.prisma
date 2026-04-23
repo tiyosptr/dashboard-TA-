@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,299 +9,386 @@ datasource db {
 }
 
 model ActualOutput {
-  id           String   @id @db.Uuid
-  hourSlot     String?  @map("hour_slot")
-  output       String?
-  targetOutput Decimal? @default(1000) @map("target_output") @db.Decimal
-  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
-  dataItemId   String?  @map("data_item_id") @db.Uuid
+  hourSlot        String?           @map("hour_slot")
+  output          String?
+  targetOutput    Decimal?          @default(1000) @map("target_output") @db.Decimal
+  createdAt       DateTime?         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime?         @default(now()) @map("updated_at") @db.Timestamptz(6)
+  id              String            @id @db.Uuid
+  dataItemId      String?           @map("data_item_id") @db.Uuid
+  dataItem        DataItem?         @relation(fields: [dataItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cycle_time_line cycle_time_line[]
+  oee_line        oee_line[]
 
-  dataItem DataItem? @relation(fields: [dataItemId], references: [id])
-
+  @@index([hourSlot], map: "idx_actual_output_hour")
   @@map("actual_output")
 }
 
 model DataItem {
-  id             String    @id @db.Uuid
-  sn             String    @db.Uuid
+  sn             String           @db.Uuid
   status         String?
-  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
-  lineProcessId  String?   @map("line_process_id") @db.Uuid
-
-  snRelation     Sn?           @relation(fields: [sn], references: [id])
-  lineProcess    LineProcess?  @relation(fields: [lineProcessId], references: [id])
+  createdAt      DateTime?        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime?        @default(now()) @map("updated_at") @db.Timestamptz(6)
+  id             String           @id @db.Uuid
+  lineProcessId  String?          @map("line_process_id") @db.Uuid
   actualOutputs  ActualOutput[]
+  lineProcess    LineProcess?     @relation(fields: [lineProcessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  snRelation     Sn               @relation(fields: [sn], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  troughput_line troughput_line[]
 
   @@map("data_items")
 }
 
 model Line {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name              String?
-  status            String?
-  totalRunningHours Decimal?  @map("total_running_hours") @db.Decimal
-  lastActiveAt      DateTime? @map("last_active_at") @db.Timestamptz(6)
-
-  lineProcesses LineProcess[]
-  workOrders    WorkOrder[]
-  partNumbers   Pn[]
-  oeeSummaries  OeeSummary[]
-  cycleTimes    CycleTimeMachine[]
-  troughputs    TroughputMachine[]
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String?
+  status             String?
+  totalRunningHours  Decimal?             @map("total_running_hours") @db.Decimal
+  lastActiveAt       DateTime?            @map("last_active_at") @db.Timestamptz(6)
+  cycle_time_line    cycle_time_line[]
+  cycleTimes         CycleTimeMachine[]
+  defect_by_process  defect_by_process[]
+  lineProcesses      LineProcess[]
+  oee_line           oee_line[]
+  partNumbers        Pn[]
+  troughput_line     troughput_line[]
+  troughputs         TroughputMachine[]
+  workOrders         WorkOrder[]
+  work_order_history work_order_history[]
 
   @@map("line")
 }
 
 model LineProcess {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  lineId       String    @map("line_id") @db.Uuid
-  processId    String    @map("process_id") @db.Uuid
-  processOrder Int?      @map("process_order")
-  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lineId            String              @map("line_id") @db.Uuid
+  processId         String              @map("process_id") @db.Uuid
+  processOrder      Int?                @map("process_order")
+  createdAt         DateTime?           @default(now()) @map("created_at") @db.Timestamp(6)
+  cycle_time_line   cycle_time_line[]
+  cycleTimes        CycleTimeMachine[]
+  dataItems         DataItem[]
+  defect_by_process defect_by_process[]
+  line              Line                @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  process           Process             @relation(fields: [processId], references: [id], onDelete: Cascade)
+  oee_line          oee_line[]
+  troughput_line    troughput_line[]
+  troughputs        TroughputMachine[]
 
-  line      Line       @relation(fields: [lineId], references: [id])
-  process   Process    @relation(fields: [processId], references: [id])
-  dataItems DataItem[]
-  cycleTimes CycleTimeMachine[]
-  troughputs TroughputMachine[]
-
+  @@unique([lineId, processId])
+  @@index([lineId], map: "idx_line_process_line_id")
+  @@index([processId], map: "idx_line_process_process_id")
   @@map("line_process")
 }
 
 model Machine {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  nameMachine       String?   @map("name_machine")
-  status            String?
-  nextMaintenance   DateTime? @map("next_maintenance") @db.Timestamp(6)
-  lastMaintenance   DateTime? @map("last_maintenance") @db.Timestamp(6)
-  totalRunningHours String?   @map("total_running_hours")
-  totalDowntimeHours String?   @map("total_downtime_hours")
-
-  processes      Process[]
-  notifications  Notification[]
-  workOrders     WorkOrder[]
-  statusLogs     MachineStatusLog[]
-  oeeSummaries   OeeSummary[]
-  cycleTimes     CycleTimeMachine[]
-  troughputs     TroughputMachine[]
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nameMachine        String?              @map("name_machine")
+  status             String?
+  nextMaintenance    DateTime?            @map("next_maintenance") @db.Timestamp(6)
+  lastMaintenance    DateTime?            @map("last_maintenance") @db.Timestamp(6)
+  totalRunningHours  String?              @map("total_running_hours")
+  totalDowntimeHours String?              @map("total_downtime_hours")
+  cycleTimes         CycleTimeMachine[]
+  statusLogs         MachineStatusLog[]
+  notifications      Notification[]
+  processes          Process[]
+  troughputs         TroughputMachine[]
+  workOrders         WorkOrder[]
+  work_order_history work_order_history[]
 
   @@map("machine")
 }
 
 model MachineStatusLog {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  machineId       String    @map("machine_id") @db.Uuid
-  status          String
-  startTime       DateTime  @default(now()) @map("start_time") @db.Timestamptz(6)
-  endTime         DateTime? @map("end_time") @db.Timestamptz(6)
-  durationSeconds BigInt?   @map("duration_seconds")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  machineId          String               @map("machine_id") @db.Uuid
+  status             String
+  startTime          DateTime             @default(now()) @map("start_time") @db.Timestamptz(6)
+  endTime            DateTime?            @map("end_time") @db.Timestamptz(6)
+  durationSeconds    BigInt?              @default(dbgenerated("\nCASE\n    WHEN (end_time IS NOT NULL) THEN (EXTRACT(epoch FROM (end_time - start_time)))::bigint\n    ELSE NULL::bigint\nEND")) @map("duration_seconds")
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  cycleTimes         CycleTimeMachine[]
+  machine            Machine              @relation(fields: [machineId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  oee_line           oee_line[]
+  work_order_history work_order_history[]
 
-  machine Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
-  cycleTimes CycleTimeMachine[]
-
-  @@index([machineId], name: "idx_msl_machine_open")
+  @@index([machineId, startTime(sort: Desc)], map: "idx_msl_machine_time")
+  @@index([status, startTime(sort: Desc)], map: "idx_msl_status")
   @@map("machine_status_log")
 }
 
 model Note {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workOrderId String?   @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workOrderId String?    @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
   text        String?
   author      String?
-  timestamp   DateTime? @db.Timestamp(6)
-
-  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+  timestamp   DateTime?  @db.Timestamp(6)
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id])
 
   @@map("note")
 }
 
 model Notification {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   type           String?
   severity       String?
-  machineId      String?   @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
-  machineName    String?   @map("machine_name")
+  machineId      String?    @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
+  machineName    String?    @map("machine_name")
   messages       String?
   read           String?
   acknowladged   String?
-  acknowladgedBy String?   @map("acknowladged_by")
-  acknowladgedAt DateTime? @map("acknowladged_at") @db.Timestamp(6)
+  acknowladgedBy String?    @map("acknowladged_by")
+  acknowladgedAt DateTime?  @map("acknowladged_at") @db.Timestamp(6)
   duration       String?
-  startAt        DateTime? @map("start_at") @db.Timestamp(6)
-  doneAt         DateTime? @map("done_at") @db.Timestamp(6)
-  processId      String?   @map("process_id") @db.Uuid
-  workOrderId    String?   @map("work_order_id") @db.Uuid
-
-  machine   Machine?   @relation(fields: [machineId], references: [id])
-  process   Process?   @relation(fields: [processId], references: [id])
-  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+  startAt        DateTime?  @map("start_at") @db.Timestamp(6)
+  doneAt         DateTime?  @map("done_at") @db.Timestamp(6)
+  processId      String?    @map("process_id") @db.Uuid
+  workOrderId    String?    @map("work_order_id") @db.Uuid
+  machine        Machine?   @relation(fields: [machineId], references: [id])
+  process        Process?   @relation(fields: [processId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  workOrder      WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("notification")
 }
 
 model Pn {
-  id         String   @id @db.Uuid
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  partNumber String?  @map("part_number") @db.VarChar
-  lineId     String?  @map("line_id") @db.Uuid
-
-  line          Line?  @relation(fields: [lineId], references: [id])
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  partNumber    String?  @map("part_number") @db.VarChar
+  id            String   @id @db.Uuid
+  lineId        String?  @map("line_id") @db.Uuid
+  line          Line?    @relation(fields: [lineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   serialNumbers Sn[]
 
   @@map("pn")
 }
 
 model Process {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name      String?
-  index     Decimal? @db.Decimal
-  machineId String?  @map("machine_id") @db.Uuid
-
-  machine       Machine?       @relation(fields: [machineId], references: [id])
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String?
+  index         Decimal?       @db.Decimal
+  machineId     String?        @map("machine_id") @db.Uuid
   lineProcesses LineProcess[]
   notifications Notification[]
+  machine       Machine?       @relation(fields: [machineId], references: [id])
 
   @@map("process")
 }
 
 model Shift {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  shiftName String   @map("shift_name") @db.VarChar
-  startTime DateTime @map("start_time") @db.Time(6)
-  endTime   DateTime @map("end_time") @db.Time(6)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  oeeSummaries OeeSummary[]
-  cycleTimes   CycleTimeMachine[]
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftName         String              @map("shift_name") @db.VarChar
+  startTime         DateTime            @map("start_time") @db.Time(6)
+  endTime           DateTime            @map("end_time") @db.Time(6)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  cycle_time_line   cycle_time_line[]
+  cycleTimes        CycleTimeMachine[]
+  defect_by_process defect_by_process[]
+  oee_line          oee_line[]
+  troughput_line    troughput_line[]
+  troughput_machine TroughputMachine[]
 
   @@map("shift")
 }
 
 model Sn {
-  id            String   @id @db.Uuid
-  partNumberId  String?  @map("part_number_id") @db.Uuid
-  serialNumber  String?  @map("serial_number") @db.VarChar
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  partNumber Pn?        @relation(fields: [partNumberId], references: [id])
-  dataItems  DataItem[]
+  partNumberId String?    @map("part_number_id") @db.Uuid
+  serialNumber String?    @map("serial_number") @db.VarChar
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String     @id @db.Uuid
+  dataItems    DataItem[]
+  partNumber   Pn?        @relation(fields: [partNumberId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("sn")
 }
 
 model Task {
-  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workOrderId String? @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workOrderId String?    @default(dbgenerated("gen_random_uuid()")) @map("work_order_id") @db.Uuid
   description String?
   completed   String?
-  completedAt String? @map("completed_at")
-
-  workOrder WorkOrder? @relation(fields: [workOrderId], references: [id])
+  completedAt String?    @map("completed_at")
+  workOrder   WorkOrder? @relation(fields: [workOrderId], references: [id])
 
   @@map("task")
 }
 
 model Technician {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name           String?
-  specialization String?
-  contactInfo    String?  @map("contact_info")
-  isActive       Boolean? @map("is_active")
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String?
+  specialization     String?
+  contactInfo        String?              @map("contact_info")
+  isActive           Boolean?             @map("is_active")
+  work_order_history work_order_history[]
 
   @@map("technician")
 }
 
 model WorkOrder {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   type              String?
   priority          String?
-  machineId         String?   @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
-  machineName       String?   @map("machine_name")
-  lineId            String?   @default(dbgenerated("gen_random_uuid()")) @map("line_id") @db.Uuid
-  nameLine          String?   @map("name_line")
+  machineId         String?        @default(dbgenerated("gen_random_uuid()")) @map("machine_id") @db.Uuid
+  machineName       String?        @map("machine_name")
+  lineId            String?        @default(dbgenerated("gen_random_uuid()")) @map("line_id") @db.Uuid
+  nameLine          String?        @map("name_line")
   status            String?
-  assignedTo        String?   @map("assigned_to")
-  createdAt         DateTime? @map("created_at") @db.Timestamp(6)
-  scheduleDate      DateTime? @map("schedule_date") @db.Timestamp(6)
-  completedAt       DateTime? @map("completed_at") @db.Timestamp(6)
-  estimatedDuration String?   @map("estimated_duration")
-  actualDuration    String?   @map("actual_duration")
+  assignedTo        String?        @map("assigned_to")
+  createdAt         DateTime?      @map("created_at") @db.Timestamp(6)
+  scheduleDate      DateTime?      @map("schedule_date") @db.Timestamp(6)
+  completedAt       DateTime?      @map("completed_at") @db.Timestamp(6)
+  estimatedDuration String?        @map("estimated_duration")
+  actualDuration    String?        @map("actual_duration")
   description       String?
-  workOrderCode     String?   @map("work_order_code")
-
-  machine       Machine?       @relation(fields: [machineId], references: [id])
-  line          Line?          @relation(fields: [lineId], references: [id])
-  notes         Note[]
-  tasks         Task[]
-  notifications Notification[]
+  workOrderCode     String?        @map("work_order_code")
+  notes             Note[]
+  notifications     Notification[]
+  tasks             Task[]
+  line              Line?          @relation(fields: [lineId], references: [id])
+  machine           Machine?       @relation(fields: [machineId], references: [id])
 
   @@map("work_order")
 }
 
 model CycleTimeMachine {
-  id                 String    @id @db.Uuid
-  shiftId            String?   @map("shift_id") @db.Uuid
-  machineId          String?   @map("machine_id") @db.Uuid
-  lineId             String?   @map("line_id") @db.Uuid
-  lineProcessId      String?   @map("line_process_id") @db.Uuid
-  totalOutput        BigInt?   @map("total_output")
-  actualCycleTime    Decimal?  @map("actual_cycle_time") @db.Decimal
-  idMachineStatusLog String?   @map("id_machine_status_log") @db.Uuid
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  shift            Shift?            @relation(fields: [shiftId], references: [id])
-  machine          Machine?          @relation(fields: [machineId], references: [id])
-  line             Line?             @relation(fields: [lineId], references: [id])
-  lineProcess      LineProcess?      @relation(fields: [lineProcessId], references: [id])
-  machineStatusLog MachineStatusLog? @relation(fields: [idMachineStatusLog], references: [id])
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                 String            @id @db.Uuid
+  shiftId            String?           @map("shift_id") @db.Uuid
+  machineId          String?           @map("machine_id") @db.Uuid
+  lineId             String?           @map("line_id") @db.Uuid
+  lineProcessId      String?           @map("line_process_id") @db.Uuid
+  totalOutput        BigInt?           @map("total_output")
+  actualCycleTime    Decimal?          @map("actual_cycle_time") @db.Decimal
+  idMachineStatusLog String?           @map("id_machine_status_log") @db.Uuid
+  machineStatusLog   MachineStatusLog? @relation(fields: [idMachineStatusLog], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line               Line?             @relation(fields: [lineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lineProcess        LineProcess?      @relation(fields: [lineProcessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  machine            Machine?          @relation(fields: [machineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shift              Shift?            @relation(fields: [shiftId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("cycle_time_machine")
 }
 
 model TroughputMachine {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  troughput     Decimal? @db.Decimal
-  totalPass     BigInt?  @map("total_pass")
-  intervalTime  BigInt?  @map("interval_time")
-  machineId     String?  @map("machine_id") @db.Uuid
-  lineId        String?  @map("line_id") @db.Uuid
-  lineProcessId String?  @map("line_process_id") @db.Uuid
-
-  machine     Machine?     @relation(fields: [machineId], references: [id])
-  line        Line?        @relation(fields: [lineId], references: [id])
-  lineProcess LineProcess? @relation(fields: [lineProcessId], references: [id])
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  troughput     Decimal?     @db.Decimal
+  totalPass     BigInt?      @map("total_pass")
+  intervalTime  BigInt?      @map("interval_time")
+  machineId     String?      @map("machine_id") @db.Uuid
+  lineId        String?      @map("line_id") @db.Uuid
+  lineProcessId String?      @map("line_process_id") @db.Uuid
+  shift_id      String?      @db.Uuid
+  created_at    DateTime?    @db.Timestamptz(6)
+  updated_at    DateTime?    @db.Timestamptz(6)
+  line          Line?        @relation(fields: [lineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lineProcess   LineProcess? @relation(fields: [lineProcessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  machine       Machine?     @relation(fields: [machineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shift         Shift?       @relation(fields: [shift_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("troughput_machine")
 }
 
-model OeeSummary {
-  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  date                 DateTime @db.Date
-  shiftId              String?  @map("shift_id") @db.Uuid
-  lineId               String   @map("line_id") @db.Uuid
-  machineId            String   @map("machine_id") @db.Uuid
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model cycle_time_line {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at        DateTime      @default(now()) @db.Timestamptz(6)
+  actual_cycle_time Decimal?      @db.Decimal
+  line_id           String?       @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  line_process_id   String?       @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shift_id          String?       @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actual_output_id  String?       @db.Uuid
+  actual_output     ActualOutput? @relation(fields: [actual_output_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line              Line?         @relation(fields: [line_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line_process      LineProcess?  @relation(fields: [line_process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shift             Shift?        @relation(fields: [shift_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
 
-  plannedTimeSeconds   BigInt?  @map("planned_time_seconds")
-  operatingTimeSeconds BigInt?  @map("operating_time_seconds")
-  downtimeSeconds      BigInt?  @map("downtime_seconds")
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model defect_by_process {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  line_id         String      @db.Uuid
+  line_process_id String      @db.Uuid
+  shift_id        String?     @db.Uuid
+  recorded_date   DateTime    @default(dbgenerated("CURRENT_DATE")) @db.Date
+  recorded_hour   Int?
+  total_produced  BigInt      @default(0)
+  total_pass      BigInt      @default(0)
+  total_reject    BigInt      @default(0)
+  created_at      DateTime?   @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?   @default(now()) @db.Timestamptz(6)
+  line            Line        @relation(fields: [line_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line_process    LineProcess @relation(fields: [line_process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shift           Shift?      @relation(fields: [shift_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
 
-  totalOutput          BigInt?  @map("total_output")
-  goodOutput           BigInt?  @map("good_output")
-  rejectOutput         BigInt?  @map("reject_output")
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model oee_line {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  line_id               String?           @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at            DateTime          @default(now()) @db.Timestamptz(6)
+  shift_id              String?           @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  line_process_id       String?           @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  oee_line              Decimal?          @db.Decimal
+  availability          Decimal?          @db.Decimal
+  perfomance            Decimal?          @db.Decimal
+  quality               Decimal?          @db.Decimal
+  machine_status_log_id String?           @db.Uuid
+  updated_at            DateTime?         @db.Timestamptz(6)
+  actual_output_id      String?           @db.Uuid
+  actual_output         ActualOutput?     @relation(fields: [actual_output_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line                  Line?             @relation(fields: [line_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line_process          LineProcess?      @relation(fields: [line_process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  machine_status_log    MachineStatusLog? @relation(fields: [machine_status_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shift                 Shift?            @relation(fields: [shift_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
 
-  availability         Decimal? @db.Decimal(6, 4)
-  performance          Decimal? @db.Decimal(6, 4)
-  quality              Decimal? @db.Decimal(6, 4)
-  oee                  Decimal? @db.Decimal(6, 4)
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model troughput_line {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  line_id          String?      @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  created_at       DateTime     @default(now()) @db.Timestamptz(6)
+  line_process_id  String?      @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  data_items_id    String?      @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actual_troughput Decimal?     @db.Decimal
+  shift_id         String?      @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rate             Decimal?     @db.Decimal
+  total_pass       Decimal?     @db.Decimal
+  eff              Decimal?     @db.Decimal
+  interval_time    Decimal?     @db.Decimal
+  data_items       DataItem?    @relation(fields: [data_items_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line             Line?        @relation(fields: [line_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  line_process     LineProcess? @relation(fields: [line_process_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shift            Shift?       @relation(fields: [shift_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
 
-  createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  machine              Machine   @relation(fields: [machineId], references: [id])
-  line                 Line      @relation(fields: [lineId], references: [id])
-  shift                Shift?    @relation(fields: [shiftId], references: [id])
-
-  @@map("oee_summary")
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model work_order_history {
+  id                    String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_order_id         String            @db.Uuid
+  machine_id            String            @db.Uuid
+  line_id               String?           @db.Uuid
+  machine_status_log_id String?           @db.Uuid
+  technician_id         String?           @db.Uuid
+  event_type            String
+  event_start           DateTime          @db.Timestamptz(6)
+  event_end             DateTime?         @db.Timestamptz(6)
+  duration_seconds      BigInt?
+  work_order_status     String?
+  priority              String?
+  assigned_to           String?
+  work_order_code       String?
+  description           String?
+  root_cause            String?
+  action_taken          String?
+  is_resolved           Boolean?          @default(false)
+  resolved_at           DateTime?         @db.Timestamptz(6)
+  resolved_by           String?
+  created_at            DateTime?         @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?         @default(now()) @db.Timestamptz(6)
+  line                  Line?             @relation(fields: [line_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  machine               Machine           @relation(fields: [machine_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  machine_status_log    MachineStatusLog? @relation(fields: [machine_status_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  technician            Technician?       @relation(fields: [technician_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }

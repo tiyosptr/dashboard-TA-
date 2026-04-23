@@ -1,6 +1,6 @@
 lalu untuk pengambilan data masih lama apalagi ketika klik machine detail itu data yang ada di modal masih lama jadi buatkan agar pengambilannya cepat dengan metode yang sudah ada pada standard industri agar pengambilan datanya cepat
 
-1. untuk bagian dashboard komponen defect by process itu data tablenya cukup ambil dari table "defect_by_process" dengan mengambil data berdasarkan line_id,pn (di table pn),line_process_id,dan juga shift_id. lalu sistem menampilkan semua process yang ada di line tersebut dan juga menampilkan defect nya berdasarkan process. 
+1. untuk halaman dashboard komponen defect by process itu data tablenya cukup ambil dari table "defect_by_process" dengan mengambil data berdasarkan line_id,line_process_id,dan juga shift_id. lalu sistem menampilkan semua process yang ada di line tersebut dan juga menampilkan semua process dengan berdasarkan defect nya. 
 
 2. setelah implementasi pada komponen defect by process jangan lupa untuk mengintegrasikan data tersebut ke api /dashboard/summary agar request nya hanya 1 dan cepat. setelah anda mengimplementasi hal tersebut buat fungsi untuk mengintegrasikan websocket untuk semua matriks yang ada di dashboard seperti actual output, oee, troughput, cycle time, status machine, dan juga defect by process, setelah itu buat fungsi untuk api /dashboard/summary dengan websocket agar request apinya hanya 1 dan cepat. 
 
