@@ -347,20 +347,25 @@ export async function GET(request: NextRequest) {
                         }
                     });
 
+                const oeeFinal = Math.round(
+                    (availData.availability_pct * availData.performance_pct * availData.quality_pct) / 10000
+                );
+
                 result.oee = {
                     availability: availData.availability_pct,
-                    performance: 0,   // Performance akan diisi fase berikutnya
+                    performance: availData.performance_pct,
                     quality: availData.quality_pct,
-                    oee: 0,
+                    oee: oeeFinal,
                     // Detail tambahan untuk debugging / tooltip
                     _detail: {
                         planned_production_min: Math.round(availData.planned_production_seconds / 60),
-                        operating_time_min:     Math.round(availData.operating_time_seconds / 60),
+                        operating_time_min: Math.round(availData.operating_time_seconds / 60),
                         unplanned_downtime_min: Math.round(availData.unplanned_downtime_seconds / 60),
                         scheduled_maintenance_min: Math.round(availData.scheduled_maintenance_seconds / 60),
                         scheduled_machines_count: availData.scheduled_machines_count,
                         shift_name: availData.shift_name,
-                    },
+                        target_ideal: availData.target_ideal,
+                    }
                 }
             } else {
                 // Tanpa lineId: coba baca riwayat oee_line terbaru
@@ -374,9 +379,9 @@ export async function GET(request: NextRequest) {
                 if (recentOee) {
                     result.oee = {
                         availability: Math.round(Number(recentOee.availability || 0) * 10000) / 100,
-                        performance:  Math.round(Number(recentOee.perfomance  || 0) * 10000) / 100,
-                        quality:      Math.round(Number(recentOee.quality     || 0) * 10000) / 100,
-                        oee:          Math.round(Number(recentOee.oee_line    || 0) * 10000) / 100,
+                        performance: Math.round(Number(recentOee.perfomance || 0) * 10000) / 100,
+                        quality: Math.round(Number(recentOee.quality || 0) * 10000) / 100,
+                        oee: Math.round(Number(recentOee.oee_line || 0) * 10000) / 100,
                     }
                 } else {
                     result.oee = { availability: 0, performance: 0, quality: 0, oee: 0 }
@@ -492,7 +497,7 @@ export async function GET(request: NextRequest) {
                     ),
                     getLineCycleTimeHistory(lineId, 20),
                 ])
-                
+
                 ctResultMain = ctResult;
 
                 const ctHistory = (ctHistoryResult.data ?? []).slice().reverse() // oldest → newest

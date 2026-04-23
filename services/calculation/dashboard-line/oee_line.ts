@@ -58,6 +58,12 @@ export interface OeeLineResult {
     quality: number;
     /** Quality persen 0–100 */
     quality_pct: number;
+    /** Performance ratio 0–1 */
+    performance: number;
+    /** Performance persen 0–100 */
+    performance_pct: number;
+    /** Target ideal berdasarkan operating time */
+    target_ideal: number;
     /** Timestamp window awal shift */
     shift_start_ts: string;
     /** Timestamp window akhir shift */
@@ -131,6 +137,73 @@ export async function calculateLineQuality(
 
     return { good, reject, total, ratio, pct };
 }
+
+/**
+ * Menghitung Performance Lini berdasarkan total aktual / target ideal
+ * 
+ * @param line_id - UUID line
+ * @param shift_start_ts - Timestamp awal shift (ISO)
+ * @param shift_end_ts - Timestamp akhir shift (ISO)
+ * @param operating_time_seconds - Operating time (dalam detik)
+ * @param target_per_hour - Target produksi per jam (default 100)
+ */
+export async function calculateLinePerformance(
+    line_id: string,
+    shift_start_ts: string,
+    shift_end_ts: string,
+    operating_time_seconds: number,
+    target_per_hour: number = 100
+): Promise<{ target_ideal: number; total_actual: number; performance_ratio: number; performance_pct: number }> {
+
+    // 1. Ambil line_process_id untuk proses terakhir (End-Of-Line / VIFG)
+    const { data: vifgProcess } = await supabaseAdmin
+        .from('line_process')
+        .select('id, process:process_id(name)')
+        .eq('line_id', line_id)
+        .order('process_order', { ascending: false });
+
+    // Cari proses dengan nama VIFG, atau ambil proses dengan order tertinggi (fallback)
+    const vifgRow = (vifgProcess ?? []).find(p => (p.process as any)?.name?.toUpperCase() === 'VIFG') 
+                    || (vifgProcess ? vifgProcess[0] : null);
+
+    if (!vifgRow) {
+        return { target_ideal: 0, total_actual: 0, performance_ratio: 0, performance_pct: 0 };
+    }
+
+    // 2. Query ke tabel data_items untuk menghitung total_produced (Pass + Reject)
+    const { count: total_actual, error } = await supabaseAdmin
+        .from('data_items')
+        .select('*', { count: 'exact', head: true })
+        .eq('line_process_id', vifgRow.id)
+        .in('status', ['pass', 'reject']) // Memfilter hanya status pass dan reject
+        .gte('created_at', shift_start_ts)
+        .lte('created_at', shift_end_ts);
+
+    const actual = total_actual || 0;
+
+    // 3. Kalkulasi Target Ideal Lini
+    // Target Ideal = (Operating Time dalam Jam) * target_per_hour
+    const operating_hours = operating_time_seconds / 3600;
+    const target_ideal = operating_hours * target_per_hour;
+
+    // 4. Hitung Performance Ratio
+    // Cegah pembagian dengan nol jika tidak ada target ideal (mesin mati)
+    let performance_ratio = 0;
+    if (target_ideal > 0) {
+        performance_ratio = actual / target_ideal;
+    }
+
+    // Konversi ke persentase dengan pembulatan 2 angka desimal
+    const performance_pct = Math.round(performance_ratio * 10000) / 100;
+
+    return { 
+        target_ideal, 
+        total_actual: actual, 
+        performance_ratio, 
+        performance_pct 
+    };
+}
+
 
 // ─── Core Calculation ─────────────────────────────────────────────────────────
 
@@ -276,8 +349,11 @@ export async function calculateLineAvailability(
         : 0;
     const availability_pct = Math.round(availability * 10000) / 100;
 
-    // ─── Langkah 6: Quality dari actual_output ───────────────────────────
+    // ─── Langkah 6: Quality & Performance ───────────────────────────
     const qData = await calculateLineQuality(line_id, window.shift_start_ts, window.shift_end_ts);
+    
+    // Default target 100 unit/jam sesuai batasan
+    const pData = await calculateLinePerformance(line_id, window.shift_start_ts, window.shift_end_ts, operating_time_seconds, 100);
 
     return {
         line_id,
@@ -297,6 +373,9 @@ export async function calculateLineAvailability(
         total_production: qData.total,
         quality: qData.ratio,
         quality_pct: qData.pct,
+        performance: pData.performance_ratio,
+        performance_pct: pData.performance_pct,
+        target_ideal: pData.target_ideal,
         shift_start_ts: shiftStart.toISOString(),
         shift_end_ts: shiftEnd.toISOString(),
         scheduled_machines_count,
@@ -330,7 +409,7 @@ export async function saveLineAvailability(
         shift_id: avResult.shift_id,
         line_process_id,
         availability: avResult.availability,  // rasio 0–1
-        perfomance: null,                   // typo di skema DB: "perfomance"
+        perfomance: avResult.performance,     // rasio 0–1 (typo db col: perfomance)
         quality: avResult.quality,            // rasio 0–1
         oee_line: null,
         updated_at: new Date().toISOString(),
@@ -384,6 +463,9 @@ export async function computeLineAvailabilityReadOnly(
     shift_end_ts: string | null;
     quality: number;
     quality_pct: number;
+    performance: number;
+    performance_pct: number;
+    target_ideal: number;
     good_output: number;
     reject_output: number;
 }> {
@@ -405,6 +487,9 @@ export async function computeLineAvailabilityReadOnly(
             shift_end_ts: null,
             quality: 0,
             quality_pct: 0,
+            performance: 0,
+            performance_pct: 0,
+            target_ideal: 0,
             good_output: 0,
             reject_output: 0,
         };
@@ -424,6 +509,9 @@ export async function computeLineAvailabilityReadOnly(
         shift_end_ts: result.shift_end_ts,
         quality: result.quality,
         quality_pct: result.quality_pct,
+        performance: result.performance,
+        performance_pct: result.performance_pct,
+        target_ideal: result.target_ideal,
         good_output: result.good_output,
         reject_output: result.reject_output,
     };
