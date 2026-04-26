@@ -350,6 +350,7 @@ function MachineDetailModal({
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // ── Date & Shift selection ───────────────────────────────────────
   const todayWib = (() => {
@@ -809,6 +810,17 @@ function MachineDetailModal({
 
             <div className="flex items-center gap-2 relative">
               <button
+                onClick={() => setShowHistory(!showHistory)}
+                className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-2 text-[11px] font-bold shadow-sm backdrop-blur-sm ${showHistory
+                    ? 'bg-white text-indigo-700'
+                    : 'bg-white/15 hover:bg-white/25 text-white'
+                  }`}
+              >
+                <Clock size={14} />
+                <span>{showHistory ? 'Close History' : 'See History Machine'}</span>
+              </button>
+
+              <button
                 onClick={(e) => { e.stopPropagation(); setShowStatusMenu(!showStatusMenu); }}
                 disabled={isUpdating}
                 className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl transition-colors flex items-center gap-2 text-white text-[11px] font-bold shadow-sm backdrop-blur-sm"
@@ -915,6 +927,78 @@ function MachineDetailModal({
         </div>
 
         <div className="p-6 space-y-5">
+          {/* Machine History Log View */}
+          {showHistory && (
+            <div className="bg-slate-50 rounded-2xl p-6 border-2 border-indigo-100 animate-in slide-in-from-top-4 duration-300">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-200">
+                    <Clock size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-800">Machine History & Troubleshooting Log</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tindakan pemeliharaan dan perbaikan terakhir</p>
+                  </div>
+                </div>
+              </div>
+
+              {dashboardLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw size={24} className="animate-spin text-indigo-500" />
+                </div>
+              ) : dashData?.machineHistory && dashData.machineHistory.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {dashData.machineHistory.map((h: any) => (
+                    h.task && Array.isArray(h.task) && h.task.length > 0 && (
+                      <div key={h.id} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow-md transition-all">
+                        <div className="flex justify-between items-start mb-3 border-b border-slate-50 pb-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-black text-indigo-600">{h.work_order_code}</p>
+                              <span className="text-[10px] text-slate-400">•</span>
+                              <div className="flex items-center gap-1 text-[10px] text-slate-600 font-bold">
+                                <Shield size={10} className="text-slate-400" />
+                                {h.technician?.name || h.resolved_by || 'Technician'}
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-semibold">{new Date(h.event_start).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${h.event_type === 'downtime' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'
+                            }`}>
+                            {h.event_type}
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {h.task.map((t: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2 p-2 bg-slate-50 rounded-lg border border-slate-100">
+                              <CheckCircle size={14} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                              <span className="text-[11px] font-bold text-slate-700 leading-tight">
+                                {typeof t === 'string' ? t : t.description}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed">
+                  <p className="text-sm text-slate-500 font-bold">Belum ada riwayat tindakan untuk mesin ini.</p>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-center">
+                <button
+                  onClick={() => setShowHistory(false)}
+                  className="px-6 py-2 bg-slate-800 text-white text-[11px] font-bold rounded-xl hover:bg-slate-900 transition-colors shadow-lg shadow-slate-200"
+                >
+                  Selesai Melihat Riwayat
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Quick Stats Row — real data where available */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <QuickStat icon={<Gauge size={14} />} label="OEE" value={`${metrics.oee}%`} color={oeeColor} />

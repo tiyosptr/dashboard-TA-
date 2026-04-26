@@ -91,8 +91,10 @@ const SCHEDULED_MAINTENANCE_DURATION_MINUTES = 30;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Menghitung Quality berdasarkan tabel actual_output (VIFG).
+ * Menghitung Quality berdasarkan tabel data_items (VIFG).
  * Quality = Good / (Good + Reject)
+ * 
+ * Menggunakan shift window untuk query data
  */
 export async function calculateLineQuality(
     line_id: string,
@@ -111,23 +113,33 @@ export async function calculateLineQuality(
 
     if (!vifgRow) return { good: 0, reject: 0, total: 0, ratio: 0, pct: 0 };
 
-    // 2. Hitung Good (Pass) - Langsung dari data_items menggunakan vifgRow.id
+    // 2. Gunakan shift window untuk query
+    const shiftStart = new Date(shift_start_ts);
+    const shiftEnd = new Date(shift_end_ts);
+
+    console.log('[OEE Quality] Using shift window:', {
+        line_process_id: vifgRow.id,
+        shift_start: shiftStart.toISOString(),
+        shift_end: shiftEnd.toISOString(),
+    });
+
+    // 3. Hitung Good (Pass) - Langsung dari data_items menggunakan vifgRow.id
     const { count: goodCount } = await supabaseAdmin
         .from('data_items')
         .select('*', { count: 'exact', head: true })
         .eq('line_process_id', vifgRow.id)
         .eq('status', 'pass')
-        .gte('created_at', shift_start_ts)
-        .lte('created_at', shift_end_ts);
+        .gte('created_at', shiftStart.toISOString())
+        .lt('created_at', shiftEnd.toISOString());
 
-    // 3. Hitung Reject
+    // 4. Hitung Reject
     const { count: rejectCount } = await supabaseAdmin
         .from('data_items')
         .select('*', { count: 'exact', head: true })
         .eq('line_process_id', vifgRow.id)
         .eq('status', 'reject')
-        .gte('created_at', shift_start_ts)
-        .lte('created_at', shift_end_ts);
+        .gte('created_at', shiftStart.toISOString())
+        .lt('created_at', shiftEnd.toISOString());
 
     const good = goodCount || 0;
     const reject = rejectCount || 0;
@@ -135,11 +147,15 @@ export async function calculateLineQuality(
     const ratio = total > 0 ? good / total : 0;
     const pct = Math.round(ratio * 10000) / 100;
 
+    console.log('[OEE Quality] Result:', { good, reject, total, pct });
+
     return { good, reject, total, ratio, pct };
 }
 
 /**
  * Menghitung Performance Lini berdasarkan total aktual / target ideal
+ * 
+ * Menggunakan shift window untuk query data
  * 
  * @param line_id - UUID line
  * @param shift_start_ts - Timestamp awal shift (ISO)
@@ -170,23 +186,33 @@ export async function calculateLinePerformance(
         return { target_ideal: 0, total_actual: 0, performance_ratio: 0, performance_pct: 0 };
     }
 
-    // 2. Query ke tabel data_items untuk menghitung total_produced (Pass + Reject)
+    // 2. Gunakan shift window untuk query
+    const shiftStart = new Date(shift_start_ts);
+    const shiftEnd = new Date(shift_end_ts);
+
+    console.log('[OEE Performance] Using shift window:', {
+        line_process_id: vifgRow.id,
+        shift_start: shiftStart.toISOString(),
+        shift_end: shiftEnd.toISOString(),
+    });
+
+    // 3. Query ke tabel data_items untuk menghitung total_produced (Pass + Reject)
     const { count: total_actual, error } = await supabaseAdmin
         .from('data_items')
         .select('*', { count: 'exact', head: true })
         .eq('line_process_id', vifgRow.id)
         .in('status', ['pass', 'reject']) // Memfilter hanya status pass dan reject
-        .gte('created_at', shift_start_ts)
-        .lte('created_at', shift_end_ts);
+        .gte('created_at', shiftStart.toISOString())
+        .lt('created_at', shiftEnd.toISOString());
 
     const actual = total_actual || 0;
 
-    // 3. Kalkulasi Target Ideal Lini
+    // 4. Kalkulasi Target Ideal Lini
     // Target Ideal = (Operating Time dalam Jam) * target_per_hour
     const operating_hours = operating_time_seconds / 3600;
     const target_ideal = operating_hours * target_per_hour;
 
-    // 4. Hitung Performance Ratio
+    // 5. Hitung Performance Ratio
     // Cegah pembagian dengan nol jika tidak ada target ideal (mesin mati)
     let performance_ratio = 0;
     if (target_ideal > 0) {
@@ -195,6 +221,13 @@ export async function calculateLinePerformance(
 
     // Konversi ke persentase dengan pembulatan 2 angka desimal
     const performance_pct = Math.round(performance_ratio * 10000) / 100;
+
+    console.log('[OEE Performance] Result:', { 
+        total_actual: actual, 
+        target_ideal, 
+        operating_hours: operating_hours.toFixed(2),
+        performance_pct 
+    });
 
     return { 
         target_ideal, 
@@ -299,6 +332,13 @@ export async function calculateLineAvailability(
     // ─── Langkah 3: Unplanned Downtime dari machine_status_log ───────────
     let unplanned_downtime_seconds = 0;
 
+    console.log('[OEE Availability] Checking downtime for machines:', {
+        machine_count: machineIds.length,
+        machine_ids: machineIds,
+        shift_start: shiftStart.toISOString(),
+        shift_end: shiftEnd.toISOString(),
+    });
+
     if (machineIds.length > 0) {
         const CHUNK = 20;
         const chunks: string[][] = [];
@@ -310,35 +350,62 @@ export async function calculateLineAvailability(
             chunks.map(async (chunk) => {
                 const { data, error } = await supabaseAdmin
                     .from('machine_status_log')
-                    .select('start_time, end_time, duration_seconds')
+                    .select('machine_id, start_time, end_time, duration_seconds, status')
                     .in('machine_id', chunk)
                     .eq('status', 'downtime')
                     .gte('start_time', shiftStart.toISOString())
-                    .lte('start_time', shiftEnd.toISOString());
+                    .lt('start_time', shiftEnd.toISOString()); // Changed from lte to lt
 
-                if (error) return 0;
+                if (error) {
+                    console.error('[OEE Availability] Error querying downtime:', error);
+                    return 0;
+                }
+
+                console.log('[OEE Availability] Downtime records found:', {
+                    chunk_size: chunk.length,
+                    records_count: data?.length || 0,
+                    records: data?.map(r => ({
+                        machine_id: r.machine_id,
+                        start: r.start_time,
+                        end: r.end_time,
+                        duration: r.duration_seconds
+                    }))
+                });
 
                 return (data ?? []).reduce((acc: number, row: any) => {
-                    if (row.duration_seconds != null) {
-                        return acc + Number(row.duration_seconds);
+                    let duration = 0;
+                    
+                    if (row.duration_seconds != null && row.duration_seconds > 0) {
+                        duration = Number(row.duration_seconds);
+                    } else if (row.end_time) {
+                        duration = (new Date(row.end_time).getTime() - new Date(row.start_time).getTime()) / 1000;
+                    } else {
+                        // Status masih berjalan → hitung sejak start sampai sekarang/akhir shift
+                        const now = new Date();
+                        const endRef = now < shiftEnd ? now : shiftEnd;
+                        duration = (endRef.getTime() - new Date(row.start_time).getTime()) / 1000;
                     }
-                    if (row.end_time) {
-                        const dur =
-                            (new Date(row.end_time).getTime() - new Date(row.start_time).getTime()) / 1000;
-                        return acc + Math.max(dur, 0);
-                    }
-                    // Status masih berjalan → hitung sejak start sampai sekarang/akhir shift
-                    const now = new Date();
-                    const endRef = now < shiftEnd ? now : shiftEnd;
-                    const dur =
-                        (endRef.getTime() - new Date(row.start_time).getTime()) / 1000;
-                    return acc + Math.max(dur, 0);
+                    
+                    duration = Math.max(duration, 0);
+                    console.log('[OEE Availability] Downtime duration calculated:', {
+                        machine_id: row.machine_id,
+                        duration_seconds: duration,
+                        duration_minutes: (duration / 60).toFixed(2)
+                    });
+                    
+                    return acc + duration;
                 }, 0);
             })
         );
 
         unplanned_downtime_seconds = downtimeResults.reduce((a, b) => a + b, 0);
     }
+
+    console.log('[OEE Availability] Total unplanned downtime:', {
+        seconds: unplanned_downtime_seconds,
+        minutes: (unplanned_downtime_seconds / 60).toFixed(2),
+        hours: (unplanned_downtime_seconds / 3600).toFixed(2)
+    });
 
     // ─── Langkah 4–5: Operating Time + Availability ───────────────────────
     const operating_time_seconds = Math.max(
@@ -348,6 +415,18 @@ export async function calculateLineAvailability(
         ? operating_time_seconds / planned_production_seconds
         : 0;
     const availability_pct = Math.round(availability * 10000) / 100;
+
+    console.log('[OEE Availability] Calculation result:', {
+        total_shift_seconds,
+        break_seconds,
+        scheduled_maintenance_seconds,
+        planned_downtime_seconds,
+        planned_production_seconds,
+        unplanned_downtime_seconds,
+        operating_time_seconds,
+        availability_ratio: availability,
+        availability_pct,
+    });
 
     // ─── Langkah 6: Quality & Performance ───────────────────────────
     const qData = await calculateLineQuality(line_id, window.shift_start_ts, window.shift_end_ts);
@@ -404,6 +483,9 @@ export async function saveLineAvailability(
         return { success: false, error: avResult.error };
     }
 
+    // Hitung OEE final = Availability × Performance × Quality
+    const oee_final = avResult.availability * avResult.performance * avResult.quality;
+
     const payload: Record<string, any> = {
         line_id,
         shift_id: avResult.shift_id,
@@ -411,7 +493,7 @@ export async function saveLineAvailability(
         availability: avResult.availability,  // rasio 0–1
         perfomance: avResult.performance,     // rasio 0–1 (typo db col: perfomance)
         quality: avResult.quality,            // rasio 0–1
-        oee_line: null,
+        oee_line: oee_final,                  // rasio 0–1 (A × P × Q)
         updated_at: new Date().toISOString(),
     };
 
@@ -430,7 +512,10 @@ export async function saveLineAvailability(
     }
 
     console.log(
-        `[oee_line] ✓ Saved | Availability: ${avResult.availability_pct}%` +
+        `[oee_line] ✓ Saved | OEE: ${Math.round(oee_final * 100)}%` +
+        ` | Availability: ${avResult.availability_pct}%` +
+        ` | Performance: ${avResult.performance_pct}%` +
+        ` | Quality: ${avResult.quality_pct}%` +
         ` | Shift: ${avResult.shift_name}` +
         ` | Unplanned DT: ${Math.round(avResult.unplanned_downtime_seconds / 60)} mnt` +
         ` | Scheduled machines: ${avResult.scheduled_machines_count}`

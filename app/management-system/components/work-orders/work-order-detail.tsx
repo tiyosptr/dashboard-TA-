@@ -3,6 +3,9 @@
 import { X, User, Clock, MapPin, CheckCircle, Circle, MessageSquare, Package, AlertCircle, Edit, Trash2 } from 'lucide-react';
 import { WorkOrder, WorkOrderStatus } from '@/types';
 import { useState, useEffect } from 'react';
+import useSWR from 'swr';
+
+const fetcher = (url: string) => fetch(url).then(r => r.json());
 
 interface WorkOrderDetailProps {
   workOrder: WorkOrder;
@@ -15,8 +18,16 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
   const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'notes'>('details');
   const [elapsedDuration, setElapsedDuration] = useState<number>(0);
 
+  const { data: historyResponse } = useSWR(
+    workOrder.machine_id ? `/api/work-order-history?machineId=${workOrder.machine_id}` : null,
+    fetcher
+  );
+  const machineHistory = historyResponse?.success 
+    ? historyResponse.data.filter((h: any) => h.id !== workOrder.id) // Filter out current WO if it exists in history
+    : [];
+
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: any;
     if (workOrder.status === 'On-Solving') {
       // Use created_at or createdAt as the start time, otherwise fallback to now
       const createdStr = (workOrder as any).created_at || (workOrder as any).createdAt;
@@ -70,6 +81,16 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
   const completedTasks = workOrder.tasks?.filter(t => t.completed).length || 0;
   const totalTasks = workOrder.tasks?.length || 0;
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+
+  const getHistoryTypeColor = (type: string) => {
+    switch (type.toLowerCase()) {
+      case 'maintenance': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'downtime': return 'bg-rose-100 text-rose-700 border-rose-200';
+      case 'on hold': return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'repair': return 'bg-purple-100 text-purple-700 border-purple-200';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-all">
@@ -143,7 +164,7 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
                 : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
               }`}
           >
-            Tasks ({completedTasks}/{totalTasks})
+            Tasks
             {activeTab === 'tasks' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
           </button>
           <button
@@ -284,60 +305,71 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
                 </div>
               )}
 
-              {/* Progress */}
-              {totalTasks > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Overall Progress</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-700">
-                        {completedTasks} of {totalTasks} tasks completed
-                      </span>
-                      <span className="text-sm font-bold text-blue-600">{Math.round(progress)}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-3">
-                      <div
-                        className="bg-blue-600 h-3 rounded-full transition-all duration-300"
-                        style={{ width: `${progress}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
           {activeTab === 'tasks' && (
             <div className="space-y-3">
-              {!workOrder.tasks || workOrder.tasks.length === 0 ? (
+              {(!workOrder.task && (!workOrder.tasks || workOrder.tasks.length === 0)) ? (
                 <div className="text-center py-12 text-gray-500">
                   <Circle size={48} className="mx-auto mb-4 opacity-50" />
                   <p>No tasks defined for this work order</p>
                 </div>
               ) : (
-                workOrder.tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className={`flex items-start gap-4 p-4 rounded-lg border-2 transition-all ${task.completed
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-white border-gray-200 hover:border-blue-300'
-                      }`}
-                  >
-                    <button
-                      className={`mt-1 flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${task.completed
-                          ? 'bg-green-600 border-green-600'
-                          : 'border-gray-300 hover:border-blue-500'
-                        }`}
-                    >
-                      {task.completed && <CheckCircle size={18} className="text-white" />}
-                    </button>
-                    <div className="flex-1">
-                      <p className={`font-medium ${task.completed ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
-                        {task.description}
-                      </p>
+                <>
+                  {/* JSONB Tasks (Performed Actions) */}
+                  {workOrder.task && Array.isArray(workOrder.task) && (
+                    <div className="mb-6">
+                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <CheckCircle size={14} className="text-green-600" />
+                        Actions Performed
+                      </h4>
+                      <div className="space-y-2">
+                        {workOrder.task.map((t: any, i: number) => (
+                          <div key={i} className="flex items-center gap-3 p-3 bg-green-50 border border-green-100 rounded-lg">
+                            <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
+                            <span className="text-sm text-gray-800 font-medium">{t.description}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )}
+
+                  {/* Machine Maintenance History tasks */}
+                  {machineHistory && machineHistory.length > 0 && (
+                    <div className="mt-8 pt-8 border-t border-gray-100">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Clock size={14} className="text-slate-400" />
+                        Machine History Log
+                      </h4>
+                      <div className="space-y-4">
+                        {machineHistory.map((history: any) => (
+                          history.task && Array.isArray(history.task) && history.task.length > 0 && (
+                            <div key={history.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                              <div className="flex justify-between items-start mb-3">
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-slate-900">{history.work_order_code}</span>
+                                  <span className="text-[10px] text-slate-500">{new Date(history.event_start).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                </div>
+                                <span className={`px-2 py-0.5 border text-[9px] font-bold rounded-lg uppercase shadow-sm ${getHistoryTypeColor(history.event_type)}`}>
+                                  {history.event_type}
+                                </span>
+                              </div>
+                              <div className="space-y-2">
+                                {history.task.map((t: any, i: number) => (
+                                  <div key={i} className="flex items-start gap-2 text-xs text-slate-700 bg-white p-2 rounded-lg border border-slate-50">
+                                    <CheckCircle size={14} className="text-emerald-500 mt-0.5 flex-shrink-0" />
+                                    <span className="font-medium">{typeof t === 'string' ? t : t.description}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

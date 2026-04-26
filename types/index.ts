@@ -73,6 +73,7 @@ export interface WorkOrder {
   actual_duration?: string;
   description: string;
   tasks: Task[];
+  task?: any;
   requiredParts: Part[];
   notes: Note[];
   location?: string;

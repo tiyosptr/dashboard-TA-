@@ -122,14 +122,43 @@ export default function Home() {
   // Global Realtime WebSocket for Dashboard
   useEffect(() => {
     const socket = new WebSocket('ws://localhost:3001');
+    
+    socket.onopen = () => {
+      console.log('[Dashboard] WebSocket connected');
+    };
+    
     socket.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'DASHBOARD_UPDATE') {
-          console.log('[ws] Dashboard update detected. Refreshing...');
-          mutate();
+        console.log('[Dashboard] WebSocket event received:', data.type);
+        
+        // Handle different types of updates
+        switch (data.type) {
+          case 'DASHBOARD_UPDATE':
+          case 'TREND_ANALYSIS_UPDATE':
+          case 'MACHINE_STATUS_UPDATE':
+            console.log('[Dashboard] Triggering data refresh...');
+            mutate();
+            break;
+          case 'NOTIFICATION_UPDATE':
+            // Could handle notifications separately if needed
+            console.log('[Dashboard] Notification update detected');
+            mutate(); // Still refresh dashboard for notification counts
+            break;
+          default:
+            console.log('[Dashboard] Unknown event type:', data.type);
         }
-      } catch (err) { }
+      } catch (err) {
+        console.error('[Dashboard] WebSocket message error:', err);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error('[Dashboard] WebSocket error:', error);
+    };
+
+    socket.onclose = () => {
+      console.log('[Dashboard] WebSocket disconnected');
     };
 
     return () => {
@@ -249,7 +278,13 @@ export default function Home() {
 
         {/* Trend Analysis - 60% height */}
         <div className="w-full" style={{ height: '60%' }}>
-          <TrendAnalysis className="h-full w-full" />
+          <TrendAnalysis 
+            className="h-full w-full" 
+            lineId={selectedLineId}
+            trendData={dashboardData?.trend}
+            isLoading={isLoading}
+            onRefresh={handleRefresh}
+          />
         </div>
 
         {/* History Chart - 38% height */}
@@ -259,7 +294,7 @@ export default function Home() {
 
       </div>
     </main>
-  ), []);
+  ), [selectedLineId, dashboardData?.trend, isLoading, handleRefresh]);
 
   if (!mounted) {
     return (

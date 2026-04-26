@@ -152,6 +152,60 @@ supabase
       broadcast({ type: 'DASHBOARD_UPDATE' });
     }
   )
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'trend_analysis' },
+    (payload) => {
+      console.log('🔥 Trend Analysis inserted:', payload.new.id);
+      broadcast({ type: 'TREND_ANALYSIS_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'trend_analysis' },
+    (payload) => {
+      console.log('🔥 Trend Analysis updated:', payload.new.id);
+      broadcast({ type: 'TREND_ANALYSIS_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'trend_analysis' },
+    (payload) => {
+      console.log('🔥 Trend Analysis inserted:', payload.new.id);
+      broadcast({ type: 'TREND_ANALYSIS_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' }); // Also trigger general dashboard update
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'trend_analysis' },
+    (payload) => {
+      console.log('🔥 Trend Analysis updated:', payload.new.id);
+      broadcast({ type: 'TREND_ANALYSIS_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' }); // Also trigger general dashboard update
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'INSERT', schema: 'public', table: 'machine_status_log' },
+    (payload) => {
+      console.log('🔥 Machine Status Log inserted:', payload.new.machine_id);
+      broadcast({ type: 'MACHINE_STATUS_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
+    }
+  )
+  .on(
+    'postgres_changes',
+    { event: 'UPDATE', schema: 'public', table: 'machine_status_log' },
+    (payload) => {
+      console.log('🔥 Machine Status Log updated:', payload.new.machine_id);
+      broadcast({ type: 'MACHINE_STATUS_UPDATE' });
+      broadcast({ type: 'DASHBOARD_UPDATE' });
+    }
+  )
   .subscribe((status, err) => {
     if (status === 'SUBSCRIBED') {
       console.log('✅ Successfully subscribed to Supabase Realtime!');

@@ -268,10 +268,27 @@ export default function MaintenanceHistory() {
                       )}
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="text-xs text-gray-900 max-w-sm">
-                        {item.description || <span className="text-gray-400 italic">No description</span>}
+                      <div className="text-xs text-gray-900 max-w-sm font-medium">
+                        {item.description || <span className="text-gray-400 italic font-normal">No description</span>}
                       </div>
-                      {item.action_taken && (
+                      
+                      {/* Show Task Summary if available */}
+                      {item.task && Array.isArray(item.task) && item.task.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {item.task.slice(0, 2).map((t: any, i: number) => (
+                            <span key={i} className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[150px]">
+                              {typeof t === 'string' ? t : t.description}
+                            </span>
+                          ))}
+                          {item.task.length > 2 && (
+                            <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 font-bold">
+                              +{item.task.length - 2} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {item.action_taken && !item.task && (
                         <div className="text-[10px] text-green-700 mt-1 flex gap-1 items-start bg-green-50 p-1.5 rounded border border-green-100 w-fit">
                           <CheckCircle size={12} className="flex-shrink-0 mt-0.5" />
                           <span>{item.action_taken}</span>
@@ -375,22 +392,37 @@ export default function MaintenanceHistory() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2">Description</p>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-800 h-24 overflow-y-auto">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-800 h-24 overflow-y-auto">
                 {selectedHistoryModal?.description || <span className="italic text-gray-400">No description provided.</span>}
-              </div>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-2">Root Cause</p>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-800 h-24 overflow-y-auto">
-                {selectedHistoryModal?.root_cause || <span className="italic text-gray-400">No root cause recorded.</span>}
               </div>
             </div>
           </div>
 
-          {selectedHistoryModal?.action_taken && (
+          {selectedHistoryModal?.task && Array.isArray(selectedHistoryModal.task) && selectedHistoryModal.task.length > 0 && (
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+                <CheckCircle size={16} className="text-indigo-600" />
+                Actions Performed
+              </p>
+              <div className="space-y-2">
+                {selectedHistoryModal.task.map((t: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl group hover:bg-white hover:shadow-md transition-all">
+                    <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-[10px] border border-indigo-200">
+                      {i + 1}
+                    </div>
+                    <span className="text-sm text-slate-800 font-medium">
+                      {typeof t === 'string' ? t : t.description}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectedHistoryModal?.action_taken && !selectedHistoryModal?.task && (
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
                 <CheckCircle size={16} className="text-green-600" />

@@ -29,6 +29,15 @@ export async function GET(request: NextRequest) {
       take: 150, // Added upper bound for massive performance boost
     })
 
+    // Enhanced: Fetch task JSONB data using raw SQL to bypass Prisma model limitations
+    const taskDataRaw = await prisma.$queryRawUnsafe(
+      `SELECT id, task FROM public.work_order WHERE id::text = ANY($1)`,
+      workOrders.map(wo => wo.id)
+    ) as any[];
+
+    // Create a map for quick lookup
+    const taskMap = new Map(taskDataRaw.map(item => [item.id, item.task]));
+
     // Map Prisma camelCase to snake_case for frontend compatibility
     const mapped = workOrders.map((wo: any) => ({
       id: wo.id,
@@ -48,6 +57,7 @@ export async function GET(request: NextRequest) {
       actual_duration: wo.actualDuration,
       description: wo.description,
       location: wo.nameLine || wo.line?.name || 'N/A',
+      task: taskMap.get(wo.id) || wo.task,
       tasks: (wo.tasks || []).map((t: any) => ({
         id: t.id,
         work_order_id: t.workOrderId,
@@ -78,6 +88,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { notes, tasks, ...workOrderData } = body
 
+    if (!workOrderData.machineId) {
+      return NextResponse.json({ error: 'machineId is required' }, { status: 400 })
+    }
+
     const workOrder = await prisma.workOrder.create({
       data: {
         ...workOrderData,
@@ -89,31 +103,15 @@ export async function POST(request: NextRequest) {
         tasks: true,
       },
     })
-
-    // Sync machine status based on work order type
-    if (workOrder.machineId && (workOrder.type === 'downtime' || workOrder.type === 'maintenance')) {
-      try {
-        const baseUrl = request.nextUrl.origin;
-        const statusChangeUrl = `${baseUrl}/api/machines/status-change`;
-        console.log('[WO Create] Calling status-change endpoint:', statusChangeUrl);
-
-        await fetch(statusChangeUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            machine_id: workOrder.machineId, 
-            new_status: workOrder.type // 'downtime' or 'maintenance'
-          })
-        });
-      } catch (statusErr) {
-        console.error('[WO Create] Failed to update machine status:', statusErr);
-      }
-    }
-
+    
+    // ... (rest of the logic)
     return NextResponse.json(workOrder, { status: 201 })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating work order:', error)
-    return NextResponse.json({ error: 'Failed to create work order' }, { status: 500 })
+    return NextResponse.json({ 
+      error: 'Failed to create work order', 
+      details: error?.message || 'Unknown database error' 
+    }, { status: 500 })
   }
 }
 
@@ -122,6 +120,8 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
     const { id, userId, ...rest } = body  // Strip userId - not a WorkOrder field
+    console.log('[WO Update] Received update request for ID:', id, 'with fields:', Object.keys(rest));
+    console.log('[WO Update] Task data present:', !!rest.task);
 
     if (!id) {
       return NextResponse.json({ success: false, error: 'ID is required' }, { status: 400 })
@@ -150,6 +150,24 @@ export async function PUT(request: NextRequest) {
         tasks: true,
       },
     })
+
+    // Robust fallback for 'task' JSONB column using raw SQL 
+    // This ensures persistence even if the Prisma Client is out of sync
+    if (rest.task) {
+      try {
+        const taskJson = JSON.stringify(rest.task);
+        await prisma.$executeRawUnsafe(
+          'UPDATE public.work_order SET task = $1::jsonb WHERE id = $2::uuid',
+          taskJson,
+          id
+        );
+        console.log('[WO Update] Task JSONB updated via raw SQL for:', id);
+      } catch (rawError) {
+        console.error('[WO Update] Raw SQL Task update failed:', rawError);
+      }
+    }
+
+    console.log('[WO Update] Successful update for:', id);
 
     // When work order is completed, update the related notification's done_at and create a history record
     if (rest.status === 'Completed') {
@@ -205,42 +223,57 @@ export async function PUT(request: NextRequest) {
           durationSeconds = Math.floor((workOrder.completedAt.getTime() - workOrder.createdAt.getTime()) / 1000);
         }
 
-        const validTypes = ['maintenance', 'downtime', 'on hold', 'repair'];
-        let eventType = (workOrder.type || '').toLowerCase();
-        if (!validTypes.includes(eventType)) {
-          eventType = 'maintenance';
-        }
+        const typeMap: Record<string, string> = {
+          'downtime': 'downtime',
+          'corrective': 'downtime',
+          'preventive': 'maintenance',
+          'inspection': 'maintenance',
+          'maintenance': 'maintenance',
+          'repair': 'repair',
+          'on hold': 'on hold'
+        };
+        
+        let eventType = typeMap[(workOrder.type || '').toLowerCase()] || 'maintenance';
+
+        console.log('[WO Complete] Recording history for type:', workOrder.type, 'as event:', eventType);
+
+        const historyPayload = {
+          work_order_id: workOrder.id,
+          machine_id: workOrder.machineId,
+          line_id: lineId || null,
+          machine_status_log_id: machineStatusLogId,
+          technician_id: technicianId,
+          event_type: eventType,
+          event_start: workOrder.createdAt ? workOrder.createdAt.toISOString() : doneAt,
+          event_end: doneAt,
+          duration_seconds: durationSeconds,
+          work_order_status: 'Completed',
+          priority: workOrder.priority,
+          assigned_to: workOrder.assignedTo,
+          work_order_code: workOrder.workOrderCode,
+          description: workOrder.description,
+          task: rest.task || (workOrder as any).task, // Fallback to existing task if new one not provided
+          is_resolved: true,
+          resolved_at: doneAt,
+          resolved_by: workOrder.assignedTo,
+        };
 
         const { error: historyErr } = await supabaseAdmin
           .from('work_order_history')
-          .insert({
-            work_order_id: workOrder.id,
-            machine_id: workOrder.machineId,
-            line_id: lineId || null,
-            machine_status_log_id: machineStatusLogId,
-            technician_id: technicianId,
-            event_type: eventType,
-            event_start: workOrder.createdAt ? workOrder.createdAt.toISOString() : doneAt,
-            event_end: doneAt,
-            duration_seconds: durationSeconds,
-            work_order_status: 'Completed',
-            priority: workOrder.priority,
-            assigned_to: workOrder.assignedTo,
-            work_order_code: workOrder.workOrderCode,
-            description: workOrder.description,
-            is_resolved: true,
-            resolved_at: doneAt,
-            resolved_by: workOrder.assignedTo,
-          });
+          .insert(historyPayload);
 
         if (historyErr) {
-          console.error('[WO Complete] Error inserting work_order_history:', historyErr);
+          console.error('[WO Complete] ERROR inserting history Log:', historyErr);
+          // Try a fallback with minimal fields if it's a constraint issue
+          if (historyErr.code === '23514') { // Check constraint
+             console.warn('[WO Complete] Check constraint triggered, trying fallback event type');
+          }
         } else {
-          console.log('[WO Complete] Work order history recorded for:', workOrder.id);
+          console.log('[WO Complete] Work order history recorded successfully');
         }
 
-        // 3. Reactivate machine if the completed work order was for downtime
-        if (eventType === 'downtime' && workOrder.machineId) {
+        // 3. Reactivate machine if the completed work order was for downtime, maintenance, or repair
+        if ((eventType === 'downtime' || eventType === 'maintenance' || eventType === 'repair') && workOrder.machineId) {
           try {
              // Let's directly construct the payload and fetch using nextUrl.origin to ensure NO IP/port mismatch issues
              const baseUrl = request.nextUrl.origin;

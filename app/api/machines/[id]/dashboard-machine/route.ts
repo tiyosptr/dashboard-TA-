@@ -258,6 +258,13 @@ export async function GET(
       .limit(1)
       .maybeSingle();
 
+    const machineHistoryPromise = supabaseAdmin
+      .from('work_order_history')
+      .select('*, technician(name)')
+      .eq('machine_id', machineId)
+      .order('event_start', { ascending: false })
+      .limit(10);
+
     // Execute ALL in parallel
     const [
       targetOutputResult,
@@ -265,12 +272,14 @@ export async function GET(
       cycleTimeResult,
       cycleTimeHistory,
       throughputResult,
+      machineHistoryResult
     ] = await Promise.all([
       targetOutputPromise,
       defectPromise,
       cycleTimePromise,
       cycleTimeHistoryPromise,
       throughputPromise,
+      machineHistoryPromise
     ]);
 
     // ══════════════════════════════════════════════════════════════════
@@ -424,6 +433,9 @@ export async function GET(
         // Shift context
         shift: shiftInfo,
         allShifts: allShiftsFormatted,
+
+        // Machine history log
+        machineHistory: machineHistoryResult.data || [],
       },
     });
   } catch (error: any) {

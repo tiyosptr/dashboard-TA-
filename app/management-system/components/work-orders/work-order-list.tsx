@@ -5,6 +5,7 @@ import { Plus, Search, RefreshCw, LayoutGrid, List, Clock, User, AlertCircle, Fi
 import WorkOrderForm from './work-order-form';
 import WorkOrderDetail from './work-order-detail';
 import WorkOrderKanban from './work-order-kanban';
+import WorkOrderCompleteForm from './work-order-complete-form';
 import { WorkOrder, WorkOrderStatus } from '@/types';
 import { supabase } from '@/lib/supabase/supabase';
 import useSWR from 'swr';
@@ -16,6 +17,7 @@ interface WorkOrderListProps {
 export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) {
   const [showForm, setShowForm] = useState(false);
   const [selectedWorkOrder, setSelectedWorkOrder] = useState<WorkOrder | null>(null);
+  const [completingWo, setCompletingWo] = useState<WorkOrder | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -45,6 +47,19 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
 
   // Update work order status
   const handleStatusChange = async (workOrderId: string, newStatus: WorkOrderStatus) => {
+    // Intercept completion for two-step process
+    if (newStatus === 'Completed') {
+      const wo = workOrders.find(w => w.id === workOrderId);
+      if (wo) {
+        setCompletingWo(wo);
+        return;
+      }
+    }
+    
+    await performStatusUpdate(workOrderId, newStatus);
+  };
+
+  const performStatusUpdate = async (workOrderId: string, newStatus: WorkOrderStatus, taskData?: any) => {
     try {
       const response = await fetch('/api/work-orders', {
         method: 'PUT',
@@ -54,6 +69,7 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
         body: JSON.stringify({
           id: workOrderId,
           status: newStatus,
+          task: taskData, // Using the new column
           userId: 'Current User',
         }),
       });
@@ -61,16 +77,38 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
       const result = await response.json();
 
       if (result.success) {
+        // Safe machine reactivation on completion
+        if (newStatus === 'Completed') {
+          const wo = result.data;
+          const targetMachineId = wo?.machineId || wo?.machine_id;
+          if (targetMachineId) {
+            console.log('[WO List] Reactivating machine:', targetMachineId);
+            fetch('/api/machines/status-change', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ machine_id: targetMachineId, new_status: 'active' })
+            }).catch(err => console.error('[WO List] Failed to reactivate machine:', err));
+          }
+        }
+
         // Force SWR to mutate
         mutate();
 
         // Update selected work order if it's open
         if (selectedWorkOrder && selectedWorkOrder.id === workOrderId) {
-          setSelectedWorkOrder(prev => prev ? { ...prev, status: newStatus } : null);
+          setSelectedWorkOrder(prev => prev ? { ...prev, status: newStatus, task: taskData } : null);
         }
+        
+        setCompletingWo(null);
       }
     } catch (error) {
       console.error('Error updating status:', error);
+    }
+  };
+
+  const handleCompleteSubmit = async (tasks: any[]) => {
+    if (completingWo) {
+      await performStatusUpdate(completingWo.id as string, 'Completed', tasks);
     }
   };
 
@@ -411,6 +449,13 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
           workOrder={selectedWorkOrder}
           onClose={() => setSelectedWorkOrder(null)}
           onStatusChange={handleStatusChange}
+        />
+      )}
+      {completingWo && (
+        <WorkOrderCompleteForm
+          workOrder={completingWo}
+          onClose={() => setCompletingWo(null)}
+          onSuccess={handleCompleteSubmit}
         />
       )}
     </div>

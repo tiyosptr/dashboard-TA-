@@ -29,7 +29,7 @@ function OEEChart({
     oeeData,
     isLoading = false,
 }: OEEChartProps) {
-    const availability = oeeData?.availability ?? 85.5;
+    const availability = oeeData?.availability ?? 0;
     const performance = oeeData?.performance ?? 0;
     const quality = oeeData?.quality ?? 0;
     const oeeValue = oeeData?.oee ?? calculateOEE(availability, performance, quality);

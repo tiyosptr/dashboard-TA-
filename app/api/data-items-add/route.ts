@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
         // ΔQ diambil dari VIFG saja → tidak ada double counting antar proses
         let lineThroughputResult = null;
         let lineCycleTimeResult = null;
+        let oeeLineResult = null;
         if (isVifg && lpData?.process) {
             // Ambil line_id dari line_process
             const { data: lpFull } = await supabaseAdmin
@@ -102,6 +103,8 @@ export async function POST(request: NextRequest) {
                 // TRIGGER LINE CYCLE TIME
                 const { getActiveShiftWindow } = await import('@/services/calculation/shift-window');
                 const { calculateLineCycleTime } = await import('@/services/calculation/dashboard-line/cycletime_line');
+                const { saveLineAvailability } = await import('@/services/calculation/dashboard-line/oee_line');
+                
                 const shiftWindow = await getActiveShiftWindow();
                 if (shiftWindow) {
                     const now = new Date();
@@ -115,6 +118,26 @@ export async function POST(request: NextRequest) {
                         now
                     );
                     console.log('[data-items-add] Line cycle time result:', JSON.stringify(lineCycleTimeResult));
+                    
+                    // TRIGGER OEE LINE CALCULATION & SAVE
+                    // Shift ID akan otomatis terdeteksi berdasarkan waktu sekarang
+                    oeeLineResult = await saveLineAvailability(
+                        lpFull.line_id,
+                        line_process_id,
+                        null, // actual_output_id
+                        null, // machine_status_log_id
+                        undefined, // shift_id (auto-detect based on current time)
+                        undefined  // baseDate (use current time)
+                    );
+                    console.log('[data-items-add] OEE Line save result:', JSON.stringify(oeeLineResult));
+                    
+                    // TRIGGER TREND ANALYSIS AGGREGATION & SAVE
+                    const { aggregateAndSaveTrendAnalysis } = await import('@/services/calculation/dashboard-line/trend_analysis');
+                    const trendResult = await aggregateAndSaveTrendAnalysis(
+                        lpFull.line_id,
+                        shiftWindow.shift_id
+                    );
+                    console.log('[data-items-add] Trend analysis save result:', JSON.stringify(trendResult));
                 }
             }
         }
@@ -128,6 +151,7 @@ export async function POST(request: NextRequest) {
             defect_rate_debug: defectResult,
             line_throughput_debug: lineThroughputResult,
             line_cycletime_debug: lineCycleTimeResult,
+            oee_line_debug: oeeLineResult,
         }, { status: 201 });
     } catch (err) {
         console.error('Unexpected error:', err);

@@ -54,44 +54,94 @@ export async function getActiveShiftWindow(
             .maybeSingle();
         shiftRow = data;
     } else {
-        const nowSec = timeToSeconds(today.toLocaleTimeString('en-GB', { hour12: false }).slice(0, 8));
+        // Hitung detik dari midnight menggunakan getHours/getMinutes/getSeconds
+        const nowSec = today.getHours() * 3600 + today.getMinutes() * 60 + today.getSeconds();
+        
+        console.log('[Shift Detection] Current time:', {
+            time: `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}:${String(today.getSeconds()).padStart(2, '0')}`,
+            nowSec,
+        });
+        
         const { data: shifts } = await supabaseAdmin
             .from('shift')
-            .select('id, shift_name, start_time, end_time');
+            .select('id, shift_name, start_time, end_time')
+            .order('shift_name');
         
         if (shifts) {
             for (const s of shifts) {
                 const ss = timeToSeconds(s.start_time);
                 const se = timeToSeconds(s.end_time);
                 
-                // Cek aktif (handle shift malam)
-                const active = se > ss
-                    ? (nowSec >= ss && nowSec <= se)
-                    : (nowSec >= ss || nowSec <= se);
+                console.log('[Shift Detection] Checking shift:', {
+                    shift_name: s.shift_name,
+                    start_time: s.start_time,
+                    end_time: s.end_time,
+                    ss,
+                    se,
+                });
+                
+                // Cek aktif (handle shift malam yang lewat tengah malam)
+                let active = false;
+                if (se > ss) {
+                    // Shift normal (tidak lewat tengah malam)
+                    // Contoh: 07:00-15:00 atau 15:00-23:00
+                    active = (nowSec >= ss && nowSec < se);
+                } else {
+                    // Shift lewat tengah malam
+                    // Contoh: 23:00-07:00 → aktif jika nowSec >= 23:00 ATAU nowSec < 07:00
+                    active = (nowSec >= ss || nowSec < se);
+                }
+                
+                console.log('[Shift Detection] Active check:', { active });
                 
                 if (active) {
                     shiftRow = s;
+                    console.log('[Shift Detection] Selected shift:', s.shift_name);
                     break;
                 }
             }
         }
     }
 
-    if (!shiftRow) return null;
+    if (!shiftRow) {
+        console.log('[Shift Detection] No shift found for current time');
+        return null;
+    }
 
     const startSec = timeToSeconds(shiftRow.start_time);
     const endSec = timeToSeconds(shiftRow.end_time);
     const total_shift_seconds = calcShiftDurationSeconds(startSec, endSec);
 
     // Penyesuaian shift lewat tengah malam (cross-day) untuk penentuan shiftStart absolut
-    const nowSecForFix = timeToSeconds(today.toLocaleTimeString('en-GB', { hour12: false }).slice(0, 8));
-    let shiftStart = buildShiftTimestamp(today, startSec);
+    const nowSecForFix = today.getHours() * 3600 + today.getMinutes() * 60 + today.getSeconds();
     
+    // Tentukan tanggal mulai shift
+    let shiftStartDate = new Date(today);
+    shiftStartDate.setHours(0, 0, 0, 0);
+    
+    // Jika shift melewati tengah malam DAN waktu sekarang < waktu mulai shift
+    // Berarti shift dimulai kemarin
     if (endSec < startSec && nowSecForFix < startSec) {
-        // Jika kita ada di jam 01:00 AM dan shift mulai 23:00, berarti mulainya kemarin.
-        shiftStart = new Date(shiftStart.getTime() - 86400 * 1000);
+        // Contoh: Shift 23:00-07:00, sekarang jam 02:00
+        // Shift dimulai kemarin jam 23:00
+        shiftStartDate.setDate(shiftStartDate.getDate() - 1);
     }
+    
+    let shiftStart = buildShiftTimestamp(shiftStartDate, startSec);
     const shiftEnd = new Date(shiftStart.getTime() + total_shift_seconds * 1000);
+    
+    console.log('[Shift Detection] Final shift window:', {
+        shift_id: shiftRow.id,
+        shift_name: shiftRow.shift_name,
+        now_time: today.toISOString(),
+        now_sec: nowSecForFix,
+        start_sec: startSec,
+        end_sec: endSec,
+        is_overnight: endSec < startSec,
+        shift_start_date: shiftStartDate.toISOString(),
+        shift_start_ts: shiftStart.toISOString(),
+        shift_end_ts: shiftEnd.toISOString(),
+    });
 
     return {
         shift_id: shiftRow.id,

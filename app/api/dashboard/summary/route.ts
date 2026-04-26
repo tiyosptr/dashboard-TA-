@@ -53,21 +53,46 @@ async function chunkedInQuery(
 
     const results = await Promise.all(
         chunks.map(async (chunk) => {
-            let query = supabaseAdmin
-                .from(table)
-                .select(selectFields)
-                .in(filterColumn, chunk)
+            // Pagination untuk mengatasi Supabase 1000 record limit
+            let allData: any[] = [];
+            const pageSize = 1000;
+            let page = 0;
+            let hasMore = true;
 
-            if (extraFilters) {
-                query = extraFilters(query)
+            while (hasMore) {
+                const start = page * pageSize;
+                const end = start + pageSize - 1;
+                
+                let query = supabaseAdmin
+                    .from(table)
+                    .select(selectFields)
+                    .in(filterColumn, chunk)
+                    .range(start, end);
+
+                if (extraFilters) {
+                    query = extraFilters(query);
+                }
+
+                const { data, error } = await query;
+                
+                if (error) {
+                    console.error(`Error querying ${table} (chunk, page ${page}):`, error);
+                    break;
+                }
+
+                if (data && data.length > 0) {
+                    allData = allData.concat(data);
+                    page++;
+                    
+                    if (data.length < pageSize) {
+                        hasMore = false;
+                    }
+                } else {
+                    hasMore = false;
+                }
             }
 
-            const { data, error } = await query
-            if (error) {
-                console.error(`Error querying ${table} (chunk):`, error)
-                return []
-            }
-            return data || []
+            return allData;
         })
     )
 
@@ -146,26 +171,54 @@ async function getFilteredDataItemIds(
     }
 
     // Standard path: lineProcessIds is small or null
-    let diQuery = supabaseAdmin.from('data_items').select('id')
+    // IMPORTANT: Supabase has default limit of 1000, we need pagination for larger datasets
+    let allDataItems: any[] = [];
+    const pageSize = 1000;
+    let page = 0;
+    let hasMore = true;
 
-    if (lineProcessIds !== null) {
-        diQuery = diQuery.in('line_process_id', lineProcessIds)
-    }
-    if (snIds !== null && snIds.length <= CHUNK_SIZE) {
-        diQuery = diQuery.in('sn', snIds)
-    } else if (snIds !== null) {
-        // snIds is large, use chunked approach
-        const diData = await chunkedInQuery(
-            'data_items', 'id', 'sn', snIds,
-            lineProcessIds !== null
-                ? (q: any) => q.in('line_process_id', lineProcessIds!)
-                : undefined,
-        )
-        return diData.map((d: any) => d.id)
-    }
+    while (hasMore) {
+        const start = page * pageSize;
+        const end = start + pageSize - 1;
+        
+        let diQuery = supabaseAdmin.from('data_items').select('id').range(start, end);
 
-    const { data: diData } = await diQuery
-    return diData?.map((d: any) => d.id) || []
+        if (lineProcessIds !== null) {
+            diQuery = diQuery.in('line_process_id', lineProcessIds);
+        }
+        if (snIds !== null && snIds.length <= CHUNK_SIZE) {
+            diQuery = diQuery.in('sn', snIds);
+        } else if (snIds !== null) {
+            // snIds is large, use chunked approach
+            const diData = await chunkedInQuery(
+                'data_items', 'id', 'sn', snIds,
+                lineProcessIds !== null
+                    ? (q: any) => q.in('line_process_id', lineProcessIds!)
+                    : undefined,
+            );
+            return diData.map((d: any) => d.id);
+        }
+
+        const { data: diData, error } = await diQuery;
+        
+        if (error) {
+            console.error('[getFilteredDataItemIds] Pagination error:', error);
+            break;
+        }
+
+        if (diData && diData.length > 0) {
+            allDataItems = allDataItems.concat(diData);
+            page++;
+            
+            if (diData.length < pageSize) {
+                hasMore = false;
+            }
+        } else {
+            hasMore = false;
+        }
+    }
+    
+    return allDataItems.map((d: any) => d.id);
 }
 
 /**
@@ -257,16 +310,27 @@ export async function GET(request: NextRequest) {
             const todayEnd = new Date(todayStart)
             todayEnd.setHours(23, 59, 59, 999)
 
-            // Tentukan shiftId yang benar
+            // Tentukan shiftId yang benar - AUTO-DETECT jika tidak ada parameter
             let actualShiftId = searchParams.get('shiftId')
             if (!actualShiftId) {
-                const shiftName = `SHIFT-${shift}`
-                const { data: shiftData } = await supabaseAdmin
-                    .from('shift')
-                    .select('id')
-                    .eq('shift_name', shiftName)
-                    .maybeSingle()
-                if (shiftData) actualShiftId = shiftData.id
+                // Auto-detect shift berdasarkan waktu sekarang
+                const { getActiveShiftWindow } = await import('@/services/calculation/shift-window');
+                const activeShiftWindow = await getActiveShiftWindow();
+                if (activeShiftWindow) {
+                    actualShiftId = activeShiftWindow.shift_id;
+                    console.log('[Dashboard Summary] Auto-detected shift:', activeShiftWindow.shift_name, '(', actualShiftId, ')');
+                } else {
+                    // Fallback ke SHIFT-1 jika tidak ada shift aktif
+                    const shift = parseInt(searchParams.get('shift') || '1');
+                    const shiftName = `SHIFT-${shift}`;
+                    const { data: shiftData } = await supabaseAdmin
+                        .from('shift')
+                        .select('id')
+                        .eq('shift_name', shiftName)
+                        .maybeSingle();
+                    if (shiftData) actualShiftId = shiftData.id;
+                    console.log('[Dashboard Summary] Fallback to shift:', shiftName, '(', actualShiftId, ')');
+                }
             }
 
             // 1. Actual Output — filtered by data_item IDs (today only)
@@ -317,12 +381,20 @@ export async function GET(request: NextRequest) {
 
             // 2. OEE — hitung Availability live dari oee_line service
             if (lineId) {
-                // Hitung availability real-time
+                // Hitung availability real-time - gunakan waktu sekarang, bukan todayStart
                 const availData = await computeLineAvailabilityReadOnly(
                     lineId,
                     actualShiftId,
-                    todayStart,
-                )
+                    undefined, // Biarkan undefined agar menggunakan waktu sekarang
+                );
+                
+                console.log('[OEE Calculation] Shift window:', {
+                    shift_id: availData.shift_id,
+                    shift_name: availData.shift_name,
+                    shift_start: availData.shift_start_ts,
+                    shift_end: availData.shift_end_ts,
+                });
+                
                 // Simpan ke DB secara async (tidak blocking response)
                 // Ambil line_process_id (VIFG / proses terakhir) untuk FK
                 supabaseAdmin
@@ -340,7 +412,7 @@ export async function GET(request: NextRequest) {
                                 null, // actual_output_id
                                 null, // machine_status_log_id
                                 availData.shift_id ?? undefined,
-                                todayStart,
+                                undefined, // Gunakan waktu sekarang
                             ).catch((e) =>
                                 console.warn('[oee_line] async save error:', e)
                             );
@@ -350,6 +422,15 @@ export async function GET(request: NextRequest) {
                 const oeeFinal = Math.round(
                     (availData.availability_pct * availData.performance_pct * availData.quality_pct) / 10000
                 );
+
+                console.log('[OEE Debug] availData:', {
+                    availability_pct: availData.availability_pct,
+                    performance_pct: availData.performance_pct,
+                    quality_pct: availData.quality_pct,
+                    good_output: availData.good_output,
+                    reject_output: availData.reject_output,
+                    target_ideal: availData.target_ideal,
+                });
 
                 result.oee = {
                     availability: availData.availability_pct,
@@ -365,6 +446,8 @@ export async function GET(request: NextRequest) {
                         scheduled_machines_count: availData.scheduled_machines_count,
                         shift_name: availData.shift_name,
                         target_ideal: availData.target_ideal,
+                        good_output: availData.good_output,
+                        reject_output: availData.reject_output,
                     }
                 }
             } else {
@@ -378,10 +461,10 @@ export async function GET(request: NextRequest) {
 
                 if (recentOee) {
                     result.oee = {
-                        availability: Math.round(Number(recentOee.availability || 0) * 10000) / 100,
-                        performance: Math.round(Number(recentOee.perfomance || 0) * 10000) / 100,
-                        quality: Math.round(Number(recentOee.quality || 0) * 10000) / 100,
-                        oee: Math.round(Number(recentOee.oee_line || 0) * 10000) / 100,
+                        availability: Math.round(Number(recentOee.availability || 0) * 100),
+                        performance: Math.round(Number(recentOee.perfomance || 0) * 100),
+                        quality: Math.round(Number(recentOee.quality || 0) * 100),
+                        oee: Math.round(Number(recentOee.oee_line || 0) * 100),
                     }
                 } else {
                     result.oee = { availability: 0, performance: 0, quality: 0, oee: 0 }
@@ -565,14 +648,8 @@ export async function GET(request: NextRequest) {
                 criticalCount,
             }
 
-            // 7. Defect By Process - filtered by lineId 
+            // 7. Defect By Process - filtered by lineId, menggunakan shift window
             if (lineId) {
-                const shiftIdParam = searchParams.get('shiftId');
-                const dYear = todayStart.getFullYear();
-                const dMonth = String(todayStart.getMonth() + 1).padStart(2, '0');
-                const dDate = String(todayStart.getDate()).padStart(2, '0');
-                const dateOnlyStr = `${dYear}-${dMonth}-${dDate}`;
-
                 // Fetch all line_processes for the line
                 const { data: lpData } = await supabaseAdmin
                     .from('line_process')
@@ -583,57 +660,73 @@ export async function GET(request: NextRequest) {
                 const lpList = lpData || [];
                 const lpIds = lpList.map((lp: any) => lp.id);
 
-                // Get defect records from defect_by_process table
-                let dbpQuery = supabaseAdmin
-                    .from('defect_by_process')
-                    .select('line_process_id, total_produced, total_pass, total_reject')
-                    .eq('line_id', lineId)
-                    .eq('recorded_date', dateOnlyStr);
-
-                if (shiftIdParam) {
-                    dbpQuery = dbpQuery.eq('shift_id', shiftIdParam);
+                // Get shift window untuk query yang konsisten
+                const { getActiveShiftWindow } = await import('@/services/calculation/shift-window');
+                const shiftWindow = await getActiveShiftWindow(actualShiftId);
+                
+                let queryStart: string;
+                let queryEnd: string;
+                
+                if (shiftWindow) {
+                    // Gunakan shift window
+                    queryStart = shiftWindow.shift_start_ts;
+                    queryEnd = shiftWindow.shift_end_ts;
+                    console.log('[Defect By Process] Using shift window:', {
+                        shift_name: shiftWindow.shift_name,
+                        start: queryStart,
+                        end: queryEnd
+                    });
+                } else {
+                    // Fallback ke day window
+                    queryStart = todayStart.toISOString();
+                    queryEnd = todayEnd.toISOString();
+                    console.log('[Defect By Process] Using day window (fallback)');
                 }
 
-                const { data: dbpRecords } = await dbpQuery;
-                const dbpData = dbpRecords || [];
-
-                // Count actual data_items per line_process today (pass + reject)
-                // This is the real "Produced" count from source data
-                let dataItemsCountMap: Record<string, number> = {};
+                // Count actual data_items per line_process dalam shift window
+                // Ini adalah "Produced" yang sebenarnya dari source data
+                let dataItemsCountMap: Record<string, { total: number; pass: number; reject: number }> = {};
+                
                 if (lpIds.length > 0) {
-                    const rawCounts = await chunkedInQuery(
+                    const rawData = await chunkedInQuery(
                         'data_items',
-                        'line_process_id',
+                        'line_process_id, status',
                         'line_process_id',
                         lpIds,
                         (q: any) => q
-                            .gte('created_at', todayStart.toISOString())
-                            .lte('created_at', todayEnd.toISOString())
+                            .gte('created_at', queryStart)
+                            .lt('created_at', queryEnd)
+                            .in('status', ['pass', 'reject'])
                     );
-                    rawCounts.forEach((row: any) => {
+                    
+                    rawData.forEach((row: any) => {
                         const lpId = row.line_process_id;
                         if (lpId) {
-                            dataItemsCountMap[lpId] = (dataItemsCountMap[lpId] || 0) + 1;
+                            if (!dataItemsCountMap[lpId]) {
+                                dataItemsCountMap[lpId] = { total: 0, pass: 0, reject: 0 };
+                            }
+                            dataItemsCountMap[lpId].total += 1;
+                            if (row.status === 'pass') {
+                                dataItemsCountMap[lpId].pass += 1;
+                            } else if (row.status === 'reject') {
+                                dataItemsCountMap[lpId].reject += 1;
+                            }
                         }
                     });
                 }
 
+                console.log('[Defect By Process] Data items count:', dataItemsCountMap);
+
                 result.defectByProcess = lpList.map((lp: any) => {
-                    const recs = dbpData.filter((r: any) => r.line_process_id === lp.id);
-                    let tPass = 0; let tRej = 0;
-                    recs.forEach((r: any) => {
-                        tPass += Number(r.total_pass || 0);
-                        tRej += Number(r.total_reject || 0);
-                    });
-                    // Use actual data_items count as real produced
-                    const realProduced = dataItemsCountMap[lp.id] || 0;
-                    const rate = realProduced > 0 ? (tRej / realProduced) * 100 : 0;
+                    const counts = dataItemsCountMap[lp.id] || { total: 0, pass: 0, reject: 0 };
+                    const rate = counts.total > 0 ? (counts.reject / counts.total) * 100 : 0;
+                    
                     return {
                         lineProcessId: lp.id,
                         processName: lp.process?.name || 'Unknown',
-                        totalProduced: realProduced,
-                        totalPass: tPass,
-                        totalReject: tRej,
+                        totalProduced: counts.total,
+                        totalPass: counts.pass,
+                        totalReject: counts.reject,
                         defectRate: Math.round(rate * 100) / 100
                     };
                 });
@@ -683,8 +776,52 @@ export async function GET(request: NextRequest) {
                     target: row.target,
                     quality: total > 0 ? Math.round((row.output / total) * 10000) / 100 : 100,
                     efficiency: Math.min(Math.round((total / row.target) * 10000) / 100, 100),
+                    downtime: 0, // Will be populated below
                 }
             })
+
+            // Add downtime data to trend
+            if (lineId) {
+                // Get machine IDs for this line
+                const { data: lpDataForDowntime } = await supabaseAdmin
+                    .from('line_process')
+                    .select('process:process_id(machine_id)')
+                    .eq('line_id', lineId);
+
+                const machineIds = [...new Set(
+                    lpDataForDowntime
+                        ?.map((lp: any) => lp.process?.machine_id)
+                        .filter((id: any) => id) || []
+                )];
+
+                if (machineIds.length > 0) {
+                    // Query downtime for last 7 days
+                    const { data: downtimeData } = await supabaseAdmin
+                        .from('machine_status_log')
+                        .select('start_time, duration_seconds')
+                        .eq('status', 'downtime')
+                        .in('machine_id', machineIds)
+                        .gte('start_time', sevenDaysAgo.toISOString())
+                        .lte('start_time', now.toISOString())
+                        .not('duration_seconds', 'is', null);
+
+                    // Group downtime by date
+                    const downtimeByDate: Record<string, number> = {};
+                    (downtimeData || []).forEach((d: any) => {
+                        const dateStr = new Date(d.start_time).toISOString().split('T')[0];
+                        if (!downtimeByDate[dateStr]) downtimeByDate[dateStr] = 0;
+                        downtimeByDate[dateStr] += d.duration_seconds || 0;
+                    });
+
+                    // Add downtime to trend data
+                    result.trend = result.trend.map((item: any) => ({
+                        ...item,
+                        downtime: downtimeByDate[item.date] 
+                            ? Math.round((downtimeByDate[item.date] / 3600) * 100) / 100 
+                            : 0
+                    }));
+                }
+            }
 
             // 6. History (last 6 months)
             const sixMonthsAgo = new Date()

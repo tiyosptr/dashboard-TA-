@@ -40,9 +40,13 @@ function DefectRejectBarChart({
     const scrollDirectionRef = useRef(1);
     const [isHovered, setIsHovered] = useState(false);
 
-    // Hitung total dari semua proses di defectData (real produced dari data_items)
-    const totalProd = defectData.reduce((acc, curr) => acc + curr.totalProduced, 0);
-    const totalDef = defectData.reduce((acc, curr) => acc + curr.totalReject, 0);
+    // Hitung total dari proses VIFG/terakhir saja (final output)
+    // Cari proses VIFG atau ambil proses terakhir
+    const vifgProcess = defectData.find(d => d.processName.toUpperCase().includes('VIFG')) 
+                        || defectData[defectData.length - 1];
+    
+    const totalProd = vifgProcess?.totalProduced || 0;
+    const totalDef = vifgProcess?.totalReject || 0;
     const defRate = totalProd > 0 ? (totalDef / totalProd) * 100 : 0;
 
     const stats = {
@@ -70,7 +74,8 @@ function DefectRejectBarChart({
     const defectByProcess: DefectProcess[] = defectData
         .filter(d => d.totalReject > 0)
         .map((d, index) => {
-            const p = totalDef > 0 ? (d.totalReject / totalDef) * 100 : 0;
+            // Persentase = (reject di proses ini / total produced di proses ini) * 100
+            const p = d.totalProduced > 0 ? (d.totalReject / d.totalProduced) * 100 : 0;
             return {
                 process: d.processName,
                 defectCount: d.totalReject,
