@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { Settings, Calendar, Play, AlertTriangle, User, FileText, ChevronRight, Briefcase, Clock, Search, Check } from 'lucide-react';
 import BaseModal from '@/app/components/ui/BaseModal';
-import useSWR from 'swr';
+import useSWR, { mutate as swrMutate } from 'swr';
 import { motion, AnimatePresence } from 'motion/react';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
@@ -11,9 +11,10 @@ const fetcher = (url: string) => fetch(url).then(r => r.json());
 interface PreventiveMaintenanceFormProps {
   schedule?: any; // Accepting machine or schedule object
   onClose: () => void;
+  onSuccess?: () => void;
 }
 
-export default function PreventiveMaintenanceForm({ schedule, onClose }: PreventiveMaintenanceFormProps) {
+export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess }: PreventiveMaintenanceFormProps) {
   const [activeTab, setActiveTab] = useState<'schedule' | 'work-order'>('schedule');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { data: techniciansResponse } = useSWR('/api/technician', fetcher);
@@ -48,18 +49,26 @@ export default function PreventiveMaintenanceForm({ schedule, onClose }: Prevent
     
     try {
       if (activeTab === 'schedule') {
-        const res = await fetch('/api/machines/status-change', {
-          method: 'POST',
+        if (!formData.nextMaintenance) {
+          throw new Error('Please select a next maintenance date');
+        }
+        const res = await fetch('/api/machines/update-maintenance', {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            machine_id: formData.machineId, 
-            next_maintenance: formData.nextMaintenance 
+          body: JSON.stringify({
+            machine_id: formData.machineId,
+            next_maintenance: formData.nextMaintenance,
           })
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || 'Failed to update schedule');
         }
+        // Revalidate both schedule and machine list data
+        await swrMutate('/api/maintenance/scheduled');
+        await swrMutate((key: any) => typeof key === 'string' && key.startsWith('/api/machines'), undefined, { revalidate: true });
+        // Notify non-SWR components (e.g. MachineList) to refresh
+        window.dispatchEvent(new CustomEvent('machine-data-updated'));
       } else if (activeTab === 'work-order') {
         // 1. Update machine status first
         const statusRes = await fetch('/api/machines/status-change', {
@@ -104,6 +113,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose }: Prevent
         }
       }
       
+      onSuccess?.();
       onClose();
     } catch (err) {
       console.error(err);

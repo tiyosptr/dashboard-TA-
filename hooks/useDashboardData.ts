@@ -146,17 +146,20 @@ export interface DashboardSummary {
     // Analysis tab data
     trend?: {
         date: string
-        output: number
+        output: number // Total produced (pass + reject)
+        pass: number // Good output only
         reject: number
         target: number
         quality: number
         efficiency: number
+        downtime: number
     }[]
 
     history?: {
-        month: string
-        output: number
-        reject: number
+        date: string // YYYY-MM-DD format
+        maintenance: number // Minutes (changed from hours)
+        downtime: number // Minutes (changed from hours)
+        reject: number // Count
     }[]
 
     // Defect by Process data

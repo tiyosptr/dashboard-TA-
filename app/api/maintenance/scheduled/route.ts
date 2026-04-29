@@ -1,82 +1,74 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    // Fetch machines with their latest status logs and line relations
-    const machines = await prisma.machine.findMany({
-      include: {
-        statusLogs: {
-          orderBy: { startTime: 'desc' },
-          take: 1
-        },
-        processes: {
-          include: {
-            lineProcesses: {
-              include: {
-                line: true
-              }
-            }
-          }
-        }
-      }
-    });
+    // Fetch all machines with their process and line info via joins
+    // machine -> process (machine_id) -> line_process (process_id) -> line (line_id)
+    const { data: machines, error } = await supabaseAdmin
+      .from('machine')
+      .select(`
+        id,
+        name_machine,
+        status,
+        next_maintenance,
+        last_maintenance,
+        total_running_hours,
+        total_downtime_hours,
+        process (
+          id,
+          name,
+          index,
+          line_process (
+            id,
+            process_order,
+            line (
+              id,
+              name
+            )
+          )
+        )
+      `)
+      .order('name_machine', { ascending: true });
 
-    const mappedMachines = machines.map(machine => {
-      const lastMaintenance = machine.lastMaintenance ? new Date(machine.lastMaintenance) : null;
-      const nextMaintenance = machine.nextMaintenance ? new Date(machine.nextMaintenance) : null;
-      
-      // Basic logic to determine if the machine is "running" from the latest log
-      const latestLog = machine.statusLogs[0];
-      const isRunning = latestLog?.status === 'active' && !latestLog.endTime;
+    if (error) {
+      console.error('Error fetching machines for schedule:', error);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
 
-      // Find first associated line info and process order
-      let lineName = 'N/A';
-      let lineId = null;
-      let processOrder = 999;
-      let processName = 'Unknown';
-      
-      const firstProcess = machine.processes?.[0];
-      if (firstProcess) {
-        processName = firstProcess.name || 'Unknown';
-        const firstLineProc = firstProcess.lineProcesses?.[0];
-        if (firstLineProc) {
-          processOrder = firstLineProc.processOrder || 999;
-          if (firstLineProc.line) {
-            lineName = firstLineProc.line.name || 'N/A';
-            lineId = firstLineProc.line.id;
-          }
-        }
-      }
+    const mappedMachines = (machines || []).map((machine: any) => {
+      // Get first process info
+      const firstProcess = machine.process?.[0] ?? null;
+      const processName = firstProcess?.name ?? 'Unknown';
+
+      // Get first line info from line_process
+      const firstLineProcess = firstProcess?.line_process?.[0] ?? null;
+      const processOrder = firstLineProcess?.process_order ?? 999;
+      const line = firstLineProcess?.line ?? null;
+      const lineName = line?.name ?? 'Unassigned';
+      const lineId = line?.id ?? null;
 
       return {
         id: machine.id,
-        name_machine: machine.nameMachine,
+        name_machine: machine.name_machine,
         status: machine.status,
-        last_maintenance: lastMaintenance,
-        next_maintenance: nextMaintenance,
-        is_running: isRunning,
-        total_running_hours: machine.totalRunningHours,
+        last_maintenance: machine.last_maintenance,
+        next_maintenance: machine.next_maintenance,
+        total_running_hours: machine.total_running_hours,
+        total_downtime_hours: machine.total_downtime_hours,
         line_name: lineName,
         line_id: lineId,
         process_order: processOrder,
-        process_name: processName
+        process_name: processName,
       };
     });
 
-    // We keep the urgency sort as the default on the server, 
-    // but the frontend can decide to sort by process.
-    // However, to satisfy the user request clearly, we can prioritize:
-    // 1. Line 
-    // 2. Process Order
+    // Sort by line name, then process order
     const sortedMachines = mappedMachines.sort((a, b) => {
-      // Sort by line name first to group them
       const lineCompare = (a.line_name || '').localeCompare(b.line_name || '');
       if (lineCompare !== 0) return lineCompare;
-      
-      // Then by process order
       return (a.process_order || 0) - (b.process_order || 0);
     });
 

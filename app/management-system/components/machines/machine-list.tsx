@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import useSWR, { preload, mutate } from 'swr';
 import {
   Search, Activity, AlertTriangle, CheckCircle, Wrench,
@@ -15,6 +16,8 @@ import {
 } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 import { AddMachineModal } from './add-machine-modal';
+import FullscreenMonitoring from './fullscreen-monitoring';
+import { MachineData } from '@/types';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, LineElement,
@@ -22,26 +25,6 @@ ChartJS.register(
 );
 
 // ─── Types ───────────────────────────────────────────────────────────
-interface MachineData {
-  id: string;
-  name_machine: string;
-  status: string;
-  next_maintenance: string | null;
-  last_maintenance: string | null;
-  total_running_hours: string | null;
-  total_downtime_hours: string | null;
-  real_cycle_time?: number | null;
-  real_throughput?: number | null;
-  line_name: string | null;
-  line_id: string | null;
-  process_name: string | null;
-  process_order: number;
-  real_output?: number;
-  real_pass?: number;
-  real_reject?: number;
-  real_defect_rate?: number;
-}
-
 interface LineOption {
   id: string;
   name: string;
@@ -258,20 +241,6 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: (m: 
           <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg ${config.bg} ${config.color}`}>
             <StatusIcon size={12} />
             <span className="text-[10px] font-bold uppercase tracking-wider">{config.label}</span>
-          </div>
-        </div>
-
-        {/* OEE Progress */}
-        <div className="mb-3">
-          <div className="flex justify-between items-baseline mb-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">OEE</span>
-            <span className={`text-xl font-black ${oeeColor}`}>{metrics.oee}%</span>
-          </div>
-          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div
-              className={`h-full rounded-full bg-gradient-to-r ${oeeBarColor} transition-all duration-700`}
-              style={{ width: `${Math.min(metrics.oee, 100)}%` }}
-            />
           </div>
         </div>
 
@@ -1000,8 +969,7 @@ function MachineDetailModal({
           )}
 
           {/* Quick Stats Row — real data where available */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-            <QuickStat icon={<Gauge size={14} />} label="OEE" value={`${metrics.oee}%`} color={oeeColor} />
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <QuickStat
               icon={<BarChart3 size={14} />}
               label="Pass"
@@ -1018,7 +986,6 @@ function MachineDetailModal({
               icon={<Zap size={14} />}
               label="Throughput"
               value={displayThroughput !== null
-                // displayThroughput is raw items/sec from real-time API
                 ? (displayThroughput >= 1 ? `${displayThroughput.toFixed(1)}/s` : `${(displayThroughput * 60).toFixed(1)}/min`)
                 : `${metrics.throughput}/hr`}
               color="text-purple-600"
@@ -1031,30 +998,6 @@ function MachineDetailModal({
             />
             <QuickStat icon={<Activity size={14} />} label="Runtime" value={formatDurationFromHours(machine.total_running_hours)} color="text-slate-600" />
             <QuickStat icon={<AlertTriangle size={14} />} label="Downtime" value={formatDurationFromHours(machine.total_downtime_hours)} color="text-rose-500" />
-          </div>
-
-          {/* OEE Overview */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 p-4">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">OEE Overview</h3>
-              <div className="flex items-center justify-center">
-                <div className="relative w-32 h-32">
-                  <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false }, tooltip: { enabled: false } } }} />
-                  <div className="absolute inset-0 flex items-center justify-center flex-col">
-                    <span className={`text-2xl font-black ${oeeColor}`}>{metrics.oee}%</span>
-                    <span className="text-[9px] text-slate-400 font-semibold">OEE</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* OEE Trend */}
-            <div className="lg:col-span-2 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 p-4">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">OEE Trend (shift ini)</h3>
-              <div className="h-40">
-                <Line data={oeeChart.data} options={oeeChart.options as any} />
-              </div>
-            </div>
           </div>
 
           {/* Charts Grid */}
@@ -1166,6 +1109,7 @@ function ChartCard({ title, subtitle, color, children }: { title: string; subtit
 
 // ─── Main Component ──────────────────────────────────────────────────
 export default function MachineManagement() {
+  const router = useRouter();
   const [machines, setMachines] = useState<MachineData[]>([]);
   const [lines, setLines] = useState<LineOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1176,6 +1120,8 @@ export default function MachineManagement() {
   const [selectedMachine, setSelectedMachine] = useState<MachineData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [showFullscreen, setShowFullscreen] = useState(false);
+  const [fullscreenLineId, setFullscreenLineId] = useState<string | null>(null);
 
   // Restore filterLine from localStorage on load
   useEffect(() => {
@@ -1268,6 +1214,13 @@ export default function MachineManagement() {
     };
   }, [fetchMachines]);
 
+  // Listen for external machine data updates (e.g. from maintenance schedule form)
+  useEffect(() => {
+    const handler = () => fetchMachines();
+    window.addEventListener('machine-data-updated', handler);
+    return () => window.removeEventListener('machine-data-updated', handler);
+  }, [fetchMachines]);
+
   const handleRefresh = () => {
     setRefreshing(true);
     fetchMachines();
@@ -1351,6 +1304,18 @@ export default function MachineManagement() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Fullscreen Monitoring Button */}
+          <button
+            onClick={() => {
+              setFullscreenLineId(filterLine !== 'all' ? filterLine : null);
+              setShowFullscreen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-[13px] font-bold transition-colors shadow-lg shadow-indigo-600/30"
+          >
+            <Layers size={14} />
+            Fullscreen Monitoring
+          </button>
+
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-bold transition-colors shadow-sm shadow-indigo-600/20"
@@ -1597,6 +1562,15 @@ export default function MachineManagement() {
           handleRefresh(); // Refresh data after adding
         }}
       />
+
+      {/* Fullscreen Monitoring */}
+      {showFullscreen && (
+        <FullscreenMonitoring
+          machines={machines}
+          onClose={() => setShowFullscreen(false)}
+          initialLineId={fullscreenLineId}
+        />
+      )}
     </div>
   );
 }

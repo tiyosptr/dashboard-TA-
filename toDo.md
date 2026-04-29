@@ -11,6 +11,11 @@ lalu untuk pengambilan data masih lama apalagi ketika klik machine detail itu da
 5. Selanjutnya buatkan fungsi atau melakukan improvisasi pada machine management untuk bagian api /[id]/dashboard. pada api tersebut semua matriks yang ada di modal machine detail itu cukup request api 1 kali saja jadi semua data matriks dikirim ke api /[id]/dashboard setelah itu api tersebut yang mengirim ke front end agar request apinya hanya 1 dan cepat. hal ini agar pengambilan datanya cepat dan sama seperti pad api /dashboard/summary.
 
 
+6. anda analisis aplikasi saya, setelah anda analisis disini saya ingin membuat ai yang dimana ai tersebut bekerja untuk mencegah downtime pada suatu mesin, jika suatu mesin dalam proses tersebut menghasilkan output anomali maka ai akan menilai data tersebut lalu memberikan warning terlebih dahulu ke dalam sistem dan jika sudah mencapai indikator bahwasanya data output atau matriks lain yang anomali maka ai tersebut membuat/generate work order id dengan status downtime. coba berikan saya saran metode apa yang harus saya gunakan untuk mencapai goals tersebut
+
+7. Tambahkan fungsi shift, jadi engine ai berfungsi per shift. AI memantau shift tersebut dengan mengambil data-data yang diperlukan dalam shift yang sedang berjalan/actual setelah itu jika terjadi anomali datanya maka ai langsung memberikan warning dan jika sudah kritis maka ai langsung mengirim notofikasi untuk downtimenya
+
+
 
 
 

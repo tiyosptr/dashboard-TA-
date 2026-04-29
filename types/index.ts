@@ -26,6 +26,26 @@ export interface Machine {
   line_id: string | null;
 }
 
+export interface MachineData {
+  id: string;
+  name_machine: string;
+  status: string;
+  next_maintenance: string | null;
+  last_maintenance: string | null;
+  total_running_hours: string | null;
+  total_downtime_hours: string | null;
+  real_cycle_time?: number | null;
+  real_throughput?: number | null;
+  line_name: string | null;
+  line_id: string | null;
+  process_name: string | null;
+  process_order: number;
+  real_output?: number;
+  real_pass?: number;
+  real_reject?: number;
+  real_defect_rate?: number;
+}
+
 export interface HistoryData {
   month: string;
   maintenance: number;
@@ -39,8 +59,11 @@ export interface CycleTimeData {
 }
 
 export interface TrendData {
-  date: string;
+  date: string; // Day number "26"
+  fullDate?: string; // Full date "2026-04-26" for label formatting
   output: number;
+  pass?: number;
+  reject?: number;
   quality: number;
   efficiency: number;
   downtime: number;

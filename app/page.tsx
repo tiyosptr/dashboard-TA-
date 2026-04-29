@@ -289,7 +289,13 @@ export default function Home() {
 
         {/* History Chart - 38% height */}
         <div className="w-full" style={{ height: '38%' }}>
-          <HistoryChart className="h-full w-full" />
+          <HistoryChart 
+            className="h-full w-full" 
+            lineId={selectedLineId}
+            historyData={dashboardData?.history}
+            isLoading={isLoading}
+            onRefresh={handleRefresh}
+          />
         </div>
 
       </div>

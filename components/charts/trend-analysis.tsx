@@ -14,11 +14,13 @@ interface TrendAnalysisProps {
   // Accept data from parent (useDashboardData) - format from API dashboard summary
   trendData?: Array<{
     date: string;
-    output: number;
+    output: number; // Total produced (pass + reject)
+    pass?: number; // Good output only
     reject: number;
     target: number;
     quality: number;
     efficiency: number;
+    downtime?: number;
   }>;
   isLoading?: boolean;
   onRefresh?: () => void;
@@ -117,24 +119,47 @@ function TrendAnalysis({
   // Determine data source and convert format
   const rawTrendData = propTrendData || fallbackResult?.data || [];
   
+  console.log('[Trend Component] ========== DATA FLOW DEBUG ==========');
+  console.log('[Trend Component] propTrendData:', propTrendData);
+  console.log('[Trend Component] fallbackResult?.data:', fallbackResult?.data);
+  console.log('[Trend Component] Raw trend data received:', rawTrendData);
+  console.log('[Trend Component] Raw data length:', rawTrendData.length);
+  
   // Convert data to TrendData format
-  const trendData: TrendData[] = rawTrendData.map((item: any) => {
+  const trendData: TrendData[] = rawTrendData.map((item: any, index: number) => {
+    console.log(`[Trend Component] Processing item ${index}:`, item);
+    
     if (item.date && typeof item.output === 'number') {
       // Data from dashboard summary API or trend-analysis API
-      return {
-        date: typeof item.date === 'string' && item.date.length === 2 
-          ? item.date // Already formatted as "DD"
-          : new Date(item.date).getDate().toString().padStart(2, '0'),
+      // Keep the full date for label formatting, but also store day number
+      const fullDate = item.date; // Keep "2026-04-26" format
+      const dateStr = typeof item.date === 'string' && item.date.length === 2 
+        ? item.date // Already formatted as "DD"
+        : new Date(item.date).getDate().toString().padStart(2, '0');
+      
+      const converted = {
+        date: dateStr, // "26" for internal use
+        fullDate: fullDate, // "2026-04-26" for label formatting
         output: item.output,
+        pass: item.pass,
         quality: item.quality || 0,
         efficiency: item.efficiency || 0,
-        downtime: item.downtime || 0, // Now includes downtime from API
+        downtime: item.downtime || 0,
+        reject: item.reject || 0,
       };
+      
+      console.log(`[Trend Component] Converted item ${index}:`, { original: item, converted });
+      return converted;
     } else {
       // Data from trend-analysis API (fallback) - already in correct format
+      console.log(`[Trend Component] Using item ${index} as-is:`, item);
       return item;
     }
   });
+  
+  console.log('[Trend Component] Final trendData:', trendData);
+  console.log('[Trend Component] Final trendData length:', trendData.length);
+  console.log('[Trend Component] ========== END DATA FLOW DEBUG ==========');
 
   const isLoading = propIsLoading || fallbackLoading;
 
@@ -189,6 +214,7 @@ function TrendAnalysis({
 
   // Handle no data state
   if (trendData.length === 0) {
+    console.log('[Trend Component] No data - trendData is empty');
     return (
       <div className={`chart-card p-4 flex flex-col h-full w-full overflow-hidden ${className}`}>
         <div className="flex items-center gap-2 mb-2 flex-shrink-0">
@@ -207,8 +233,34 @@ function TrendAnalysis({
     );
   }
 
+  // Calculate 7-day totals instead of just showing latest day
+  const totalProduced = trendData.reduce((sum, d) => sum + d.output, 0); // Total produced (pass + reject)
+  const totalPass = trendData.reduce((sum, d) => sum + (d.pass || (d.output - d.reject)), 0);
+  const totalReject = trendData.reduce((sum, d) => sum + d.reject, 0);
+  const avgQuality = trendData.reduce((sum, d) => sum + d.quality, 0) / trendData.length;
+  const avgEfficiency = trendData.reduce((sum, d) => sum + d.efficiency, 0) / trendData.length;
+  
+  // Calculate total downtime with detailed logging
+  const downtimeValues = trendData.map(d => d.downtime || 0);
+  const totalDowntime = downtimeValues.reduce((sum, val) => sum + val, 0);
+  
+  console.log('[Trend Component] Downtime values per day:', downtimeValues);
+  console.log('[Trend Component] Total downtime (raw):', totalDowntime);
+  console.log('[Trend Component] Total downtime (formatted):', totalDowntime.toFixed(1));
+
   const latestData = trendData[trendData.length - 1];
   const previousData = trendData.length > 1 ? trendData[trendData.length - 2] : null;
+
+  console.log('[Trend Component] Latest data:', latestData);
+  console.log('[Trend Component] Previous data:', previousData);
+  console.log('[Trend Component] 7-day totals:', { 
+    totalProduced, 
+    totalPass, 
+    totalReject, 
+    avgQuality, 
+    avgEfficiency, 
+    totalDowntime 
+  });
 
   const calculateTrend = (current: number, previous: number | null) => {
     if (!previous || previous === 0) return { value: 0, isPositive: current >= 0 };
@@ -222,11 +274,26 @@ function TrendAnalysis({
   const downtimeTrend = calculateTrend(latestData.downtime, previousData?.downtime || null);
 
   const data = {
-    labels: trendData.map(d => `Day ${d.date}`),
+    labels: trendData.map(d => {
+      // Use fullDate if available, otherwise fall back to date
+      const dateStr = d.fullDate || d.date;
+      
+      // If it's in YYYY-MM-DD format, convert to "DD Mon"
+      if (typeof dateStr === 'string' && dateStr.includes('-')) {
+        // Parse date and format dynamically
+        const dateObj = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
+        const day = dateObj.getDate();
+        const month = dateObj.toLocaleDateString('en-US', { month: 'short' });
+        return `${day} ${month}`;
+      } else {
+        // Fallback to "Day XX"
+        return `Day ${dateStr}`;
+      }
+    }),
     datasets: [
       {
-        label: 'Output',
-        data: trendData.map(d => d.output),
+        label: 'Total Produced',
+        data: trendData.map(d => d.output), // Total produced (pass + reject)
         borderColor: '#6366f1',
         backgroundColor: 'rgba(99,102,241,0.06)',
         borderWidth: 2.5,
@@ -240,7 +307,7 @@ function TrendAnalysis({
         fill: true,
       },
       {
-        label: 'Quality',
+        label: 'Quality %',
         data: trendData.map(d => d.quality),
         borderColor: '#10b981',
         backgroundColor: '#10b981',
@@ -254,7 +321,7 @@ function TrendAnalysis({
         yAxisID: 'y1',
       },
       {
-        label: 'Efficiency',
+        label: 'Efficiency %',
         data: trendData.map(d => d.efficiency),
         borderColor: '#a78bfa',
         backgroundColor: '#a78bfa',
@@ -269,6 +336,13 @@ function TrendAnalysis({
       },
     ],
   };
+
+  console.log('[Trend Component] Chart data:', {
+    labels: data.labels,
+    totalProducedData: data.datasets[0].data,
+    qualityData: data.datasets[1].data,
+    efficiencyData: data.datasets[2].data,
+  });
 
   const options = {
     responsive: true,
@@ -314,10 +388,38 @@ function TrendAnalysis({
   };
 
   const kpiData = [
-    { title: 'Output', value: latestData.output.toLocaleString(), trend: outputTrend, icon: '📦', bg: 'bg-gradient-to-br from-indigo-50 to-indigo-100/50 border-indigo-100', valueColor: 'text-indigo-700' },
-    { title: 'Quality', value: `${latestData.quality}%`, trend: qualityTrend, icon: '✅', bg: 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-100', valueColor: 'text-emerald-700' },
-    { title: 'Efficiency', value: `${latestData.efficiency}%`, trend: efficiencyTrend, icon: '⚡', bg: 'bg-gradient-to-br from-violet-50 to-violet-100/50 border-violet-100', valueColor: 'text-violet-700' },
-    { title: 'Downtime', value: `${latestData.downtime}h`, trend: { ...downtimeTrend, isPositive: !downtimeTrend.isPositive }, icon: '⏱️', bg: 'bg-gradient-to-br from-rose-50 to-rose-100/50 border-rose-100', valueColor: 'text-rose-700' },
+    { 
+      title: 'Total Produced', 
+      value: totalProduced.toLocaleString(), 
+      trend: outputTrend, 
+      icon: '📦', 
+      bg: 'bg-gradient-to-br from-indigo-50 to-indigo-100/50 border-indigo-100', 
+      valueColor: 'text-indigo-700'
+    },
+    { 
+      title: 'Avg Quality', 
+      value: `${Math.round(avgQuality)}%`, 
+      trend: qualityTrend, 
+      icon: '✅', 
+      bg: 'bg-gradient-to-br from-emerald-50 to-emerald-100/50 border-emerald-100', 
+      valueColor: 'text-emerald-700'
+    },
+    { 
+      title: 'Avg Efficiency', 
+      value: `${Math.round(avgEfficiency)}%`, 
+      trend: efficiencyTrend, 
+      icon: '⚡', 
+      bg: 'bg-gradient-to-br from-violet-50 to-violet-100/50 border-violet-100', 
+      valueColor: 'text-violet-700'
+    },
+    { 
+      title: 'Total Downtime', 
+      value: `${Math.floor(totalDowntime * 10) / 10}h`, // Truncate instead of round
+      trend: { ...downtimeTrend, isPositive: !downtimeTrend.isPositive }, 
+      icon: '⏱️', 
+      bg: 'bg-gradient-to-br from-rose-50 to-rose-100/50 border-rose-100', 
+      valueColor: 'text-rose-700'
+    },
   ];
 
   return (
@@ -339,10 +441,6 @@ function TrendAnalysis({
           <div key={kpi.title} className={`${kpi.bg} rounded-xl p-2.5 border card-hover`}>
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] font-semibold text-slate-600">{kpi.icon} {kpi.title}</span>
-              <div className={`flex items-center gap-0.5 text-[9px] font-bold ${kpi.trend.isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {kpi.trend.isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                {kpi.trend.value}%
-              </div>
             </div>
             <div className={`text-base font-black ${kpi.valueColor}`}>{kpi.value}</div>
           </div>

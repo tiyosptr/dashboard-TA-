@@ -297,13 +297,21 @@ async function insertThroughputLine(payload: InsertPayload): Promise<void> {
 // ─── READ helpers ─────────────────────────────────────────────────────────────
 
 export async function getLatestLineThroughput(
-    line_id: string
+    line_id: string,
+    shift_id?: string | null
 ): Promise<{ success: boolean; data?: ThroughputLineRecord | null; error?: string }> {
     try {
-        const { data, error } = await supabaseAdmin
+        let query = supabaseAdmin
             .from('troughput_line')
             .select('*')
-            .eq('line_id', line_id)
+            .eq('line_id', line_id);
+
+        // Filter by shift_id if provided
+        if (shift_id) {
+            query = query.eq('shift_id', shift_id);
+        }
+
+        const { data, error } = await query
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
