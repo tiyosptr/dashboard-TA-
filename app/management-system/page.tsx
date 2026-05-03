@@ -270,7 +270,7 @@ export default function ManagementSystemPage() {
               <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Work Orders</h3>
                 <div className="space-y-3">
-                  {recentWorkOrders.length > 0 ? recentWorkOrders.map((wo) => (
+                  {recentWorkOrders.length > 0 ? recentWorkOrders.map((wo: any) => (
                     <div key={wo.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors cursor-pointer" onClick={() => setActiveTab('work-orders')}>
                       <div>
                         <div className="font-semibold text-gray-900 text-sm">{wo.id}</div>
@@ -294,7 +294,7 @@ export default function ManagementSystemPage() {
               <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Critical Alerts</h3>
                 <div className="space-y-2">
-                  {criticalAlertsList.length > 0 ? criticalAlertsList.map((alert) => (
+                  {criticalAlertsList.length > 0 ? criticalAlertsList.map((alert: any) => (
                     <div key={alert.id} className={`flex items-start gap-2 p-2.5 rounded-md border-l-4 cursor-pointer hover:bg-gray-50 transition-colors ${alert.severity === 'critical' ? 'bg-red-50/50 border-red-500' :
                       alert.severity === 'high' ? 'bg-orange-50/50 border-orange-500' :
                         'bg-yellow-50/50 border-yellow-500'
