@@ -55,11 +55,38 @@ export async function POST(
             return NextResponse.json({ success: false, error: 'process_id wajib diisi' }, { status: 400 });
         }
 
+        // 1. Ambil data template process yang dipilih
+        const { data: templateProc } = await supabaseAdmin
+            .from('process')
+            .select('name, index')
+            .eq('id', process_id)
+            .single();
+
+        if (!templateProc) {
+            return NextResponse.json({ success: false, error: 'Process template tidak ditemukan' }, { status: 404 });
+        }
+
+        // 2. Duplikasi process tersebut untuk Line ini (dengan machine_id = null)
+        const { data: newProc, error: newProcErr } = await supabaseAdmin
+            .from('process')
+            .insert({
+                name: templateProc.name,
+                index: templateProc.index,
+                machine_id: null
+            })
+            .select()
+            .single();
+
+        if (newProcErr || !newProc) {
+            return NextResponse.json({ success: false, error: 'Gagal membuat duplikasi process: ' + (newProcErr?.message || '') }, { status: 500 });
+        }
+
+        // 3. Link NEW process ke line
         const { data, error } = await supabaseAdmin
             .from('line_process')
             .insert({
                 line_id: lineId,
-                process_id,
+                process_id: newProc.id,
                 process_order: process_order || 0
             })
             .select('id, process_order, process_id, process:process_id(id, name, index)')

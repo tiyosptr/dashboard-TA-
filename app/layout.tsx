@@ -14,6 +14,8 @@ export const metadata: Metadata = {
   description: 'Real-time Manufacturing Monitoring System - PT Volex Indonesia',
 }
 
+import { Toaster } from 'react-hot-toast';
+
 export default function RootLayout({
   children,
 }: {
@@ -26,6 +28,7 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="http://localhost:3000" />
       </head>
       <body className={`${inter.className} antialiased`} suppressHydrationWarning>
+        <Toaster position="top-center" />
         {children}
       </body>
     </html>

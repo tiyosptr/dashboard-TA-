@@ -1,6 +1,6 @@
 'use client';
 
-import { X, User, Clock, MapPin, CheckCircle, Circle, MessageSquare, Package, AlertCircle, Edit, Trash2 } from 'lucide-react';
+import { X, User, Clock, MapPin, CheckCircle, Circle, Package, AlertCircle, Edit, Trash2 } from 'lucide-react';
 import { WorkOrder, WorkOrderStatus } from '@/types';
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
@@ -14,8 +14,8 @@ interface WorkOrderDetailProps {
 }
 
 export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: WorkOrderDetailProps) {
-  const [newNote, setNewNote] = useState('');
-  const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'notes'>('details');
+
+  const [activeTab, setActiveTab] = useState<'details' | 'tasks'>('details');
   const [elapsedDuration, setElapsedDuration] = useState<number>(0);
 
   const { data: historyResponse } = useSWR(
@@ -51,12 +51,7 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
     return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
   };
 
-  const handleAddNote = () => {
-    if (newNote.trim()) {
-      console.log('Adding note:', newNote);
-      setNewNote('');
-    }
-  };
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -104,7 +99,7 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
           <div className="flex justify-between items-start relative z-10">
             <div className="flex flex-col gap-1">
               <h2 className="text-3xl font-extrabold text-white flex items-center gap-3">
-                {String(workOrder.id)}
+                {workOrder.work_order_code || String(workOrder.id)}
               </h2>
               <p className="text-indigo-100 font-medium opacity-90 flex items-center gap-1.5">
                 <MapPin size={16} />
@@ -167,16 +162,7 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
             Tasks
             {activeTab === 'tasks' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
           </button>
-          <button
-            onClick={() => setActiveTab('notes')}
-            className={`px-6 py-4 font-semibold text-sm transition-all relative ${activeTab === 'notes'
-                ? 'text-indigo-600'
-                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-          >
-            Notes ({workOrder.notes?.length || 0})
-            {activeTab === 'notes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
-          </button>
+
         </div>
 
         {/* Content */}
@@ -374,62 +360,7 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
             </div>
           )}
 
-          {activeTab === 'notes' && (
-            <div className="space-y-6">
-              {/* Add Note */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Add Note</h3>
-                <textarea
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  rows={3}
-                  placeholder="Write a note about this work order..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
-                />
-                <button
-                  onClick={handleAddNote}
-                  disabled={!newNote.trim()}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Add Note
-                </button>
-              </div>
 
-              {/* Notes List */}
-              <div className="space-y-4">
-                {!workOrder.notes || workOrder.notes.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500">
-                    <MessageSquare size={48} className="mx-auto mb-4 opacity-50" />
-                    <p>No notes yet</p>
-                  </div>
-                ) : (
-                  workOrder.notes.map((note) => (
-                    <div key={note.id} className="bg-white border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                            {note.author.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">{note.author}</p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(note.timestamp).toLocaleString('id-ID', {
-                                day: 'numeric',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-gray-700 ml-10">{note.text}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer Actions */}

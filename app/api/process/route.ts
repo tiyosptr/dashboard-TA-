@@ -33,17 +33,28 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ success: true, data: processes });
         }
 
-        // Get all processes
+        // Get all processes to build templates
         const { data: processes, error } = await supabaseAdmin
             .from('process')
-            .select('*')
+            .select('id, name, index')
             .order('index', { ascending: true });
 
         if (error) {
             return NextResponse.json({ success: false, error: error.message }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true, data: processes || [] });
+        // Filter out duplicates by name to create a template list
+        const uniqueProcesses: any[] = [];
+        const seen = new Set();
+        (processes || []).forEach(p => {
+            const nameKey = (p.name || '').toLowerCase().trim();
+            if (!seen.has(nameKey)) {
+                seen.add(nameKey);
+                uniqueProcesses.push(p);
+            }
+        });
+
+        return NextResponse.json({ success: true, data: uniqueProcesses });
     } catch (error) {
         console.error('Error fetching processes:', error);
         return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });

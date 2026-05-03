@@ -3,8 +3,12 @@
 import { AlertTriangle, ArrowLeft, Loader2, Info, Clock, CheckCircle2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import useSWR from 'swr';
 import { supabase } from '@/lib/supabase/supabase';
 import { Notification } from '@/types';
+
+// Fetcher for useSWR
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 interface Line {
   id: string;
@@ -25,7 +29,12 @@ export default function NotifPage() {
   const [isTriggering, setIsTriggering] = useState(false);
 
   // Data States
-  const [lines, setLines] = useState<Line[]>([]);
+  const { data: linesRes } = useSWR('/api/lines', fetcher, {
+    revalidateOnFocus: true,
+    refreshInterval: 30000, // Refresh every 30s as a fallback
+  });
+  const lines: Line[] = linesRes?.success ? linesRes.data : [];
+  
   const [processes, setProcesses] = useState<ProcessWithMachine[]>([]);
   const [recentAlerts, setRecentAlerts] = useState<Notification[]>([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(true);
@@ -36,9 +45,8 @@ export default function NotifPage() {
   const [severity, setSeverity] = useState<string>('high');
   const [description, setDescription] = useState<string>('');
 
-  // 1. Initial Load: Fetch all lines & recent alerts
+  // 1. Initial Load: Fetch recent alerts
   useEffect(() => {
-    loadLines();
     loadRecentAlerts();
 
     // Subscribe to real-time updates for notifications
@@ -61,19 +69,6 @@ export default function NotifPage() {
       supabase.removeChannel(channel);
     };
   }, []);
-
-  const loadLines = async () => {
-    try {
-      const response = await fetch('/api/lines');
-      const result = await response.json();
-
-      if (result.success && result.data.length > 0) {
-        setLines(result.data);
-      }
-    } catch (error) {
-      console.error('Error loading lines:', error);
-    }
-  };
 
   const loadRecentAlerts = async () => {
     try {

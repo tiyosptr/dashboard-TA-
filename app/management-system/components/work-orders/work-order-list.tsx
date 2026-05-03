@@ -10,6 +10,66 @@ import { WorkOrder, WorkOrderStatus } from '@/types';
 import { supabase } from '@/lib/supabase/supabase';
 import useSWR from 'swr';
 
+function LiveWODuration({ startTime, status }: { startTime: string; status: string }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (status !== 'On-Solving') return;
+    const start = new Date(startTime).getTime();
+    const update = () => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startTime, status]);
+
+  if (status !== 'On-Solving') return null;
+
+  const hours = Math.floor(elapsed / 3600);
+  const minutes = Math.floor((elapsed % 3600) / 60);
+  const secs = elapsed % 60;
+  const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+  return (
+    <div className="flex items-center gap-1 mt-1 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 animate-pulse w-fit">
+      <Clock size={10} />
+      {timeString}
+    </div>
+  );
+}
+
+function renderDuration(wo: any) {
+  if (wo.status === 'On-Solving') {
+    return <LiveWODuration startTime={wo.created_at || (wo as any).createdAt} status={wo.status} />;
+  }
+  if (wo.status === 'Completed') {
+    // Prefer actual_duration (seconds) saved by backend — it uses machine_status_log.start_time
+    // which reflects the real event start, not the WO generation time
+    const actualDurSecs = wo.actual_duration ? Number(wo.actual_duration) : null;
+    let secs: number | null = null;
+
+    if (actualDurSecs !== null && actualDurSecs > 0) {
+      secs = actualDurSecs;
+    } else {
+      // Fallback: compute from timestamps (less accurate for pre-generated WOs)
+      const end = wo.completed_at ? new Date(wo.completed_at).getTime() : 0;
+      const start = (wo.created_at || (wo as any).createdAt) ? new Date(wo.created_at || (wo as any).createdAt).getTime() : 0;
+      if (start && end && end > start) {
+        secs = Math.floor((end - start) / 1000);
+      }
+    }
+
+    if (secs !== null && secs > 0) {
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return <div className="mt-1 text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded border border-green-200 w-fit">{m}m {s}s</div>;
+    }
+    return <div className="mt-1 text-xs text-gray-500">-</div>;
+  }
+  return <div className="mt-1 text-xs text-gray-500">-</div>;
+}
+
 interface WorkOrderListProps {
   defaultWoId?: string | null;
 }
@@ -59,7 +119,7 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
     await performStatusUpdate(workOrderId, newStatus);
   };
 
-  const performStatusUpdate = async (workOrderId: string, newStatus: WorkOrderStatus, taskData?: any) => {
+  const performStatusUpdate = async (workOrderId: string, newStatus: WorkOrderStatus, taskData?: any, nextMaintenanceDate?: string) => {
     try {
       const response = await fetch('/api/work-orders', {
         method: 'PUT',
@@ -70,6 +130,7 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
           id: workOrderId,
           status: newStatus,
           task: taskData, // Using the new column
+          next_maintenance: nextMaintenanceDate, // For machine update
           userId: 'Current User',
         }),
       });
@@ -93,6 +154,9 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
 
         // Force SWR to mutate
         mutate();
+        
+        // Notify other components (Machine Management, Schedule Maintenance) to refresh
+        window.dispatchEvent(new CustomEvent('machine-data-updated'));
 
         // Update selected work order if it's open
         if (selectedWorkOrder && selectedWorkOrder.id === workOrderId) {
@@ -106,9 +170,9 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
     }
   };
 
-  const handleCompleteSubmit = async (tasks: any[]) => {
+  const handleCompleteSubmit = async (tasks: any[], nextMaintenanceDate?: string) => {
     if (completingWo) {
-      await performStatusUpdate(completingWo.id as string, 'Completed', tasks);
+      await performStatusUpdate(completingWo.id as string, 'Completed', tasks, nextMaintenanceDate);
     }
   };
 
@@ -140,6 +204,86 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
     mutate();
   };
 
+  const handlePrintMachineHistory = async (wo: any) => {
+    try {
+      const machineId = wo.machine_id || wo.machineId;
+      const res = await fetch(`/api/work-order-history?machineId=${machineId}`);
+      const json = await res.json();
+      if (!json.success) {
+        alert('Failed to fetch machine history');
+        return;
+      }
+
+      const historyData = json.data || [];
+      
+      const printContent = `
+        <html>
+          <head>
+            <title>Machine History - ${wo.machine_name}</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #333; }
+              h2 { margin-bottom: 5px; color: #111; }
+              .header { margin-bottom: 30px; border-bottom: 2px solid #e5e7eb; padding-bottom: 20px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th, td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; font-size: 14px; }
+              th { background: #f9fafb; font-weight: bold; }
+              .type-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: capitalize; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h2>Machine Maintenance History</h2>
+              <p><strong>Machine:</strong> ${wo.machine_name}</p>
+              <p><strong>Generated on:</strong> ${new Date().toLocaleString('id-ID')}</p>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Event Type</th>
+                  <th>Duration</th>
+                  <th>Resolved By</th>
+                  <th>Actions / Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${historyData.length > 0 ? historyData.map((h: any) => `
+                  <tr>
+                    <td>${new Date(h.event_start).toLocaleString('id-ID')}</td>
+                    <td><span class="type-badge">${h.event_type}</span></td>
+                    <td>${(() => {
+                      const dur = h.duration_seconds || (h.event_start && h.event_end ? Math.floor((new Date(h.event_end).getTime() - new Date(h.event_start).getTime()) / 1000) : 0);
+                      return dur ? Math.floor(dur / 60) + 'm ' + (dur % 60) + 's' : '-';
+                    })()}</td>
+                    <td>${h.resolved_by || (h.technician?.name) || '-'}</td>
+                    <td>
+                      <div><strong>${h.description || '-'}</strong></div>
+                      ${h.task && Array.isArray(h.task) ? `
+                        <ul style="margin-top: 5px; padding-left: 15px;">
+                          ${h.task.map((t: any) => `<li>${typeof t === 'string' ? t : t.description}</li>`).join('')}
+                        </ul>
+                      ` : ''}
+                    </td>
+                  </tr>
+                `).join('') : '<tr><td colspan="5" style="text-align: center;">No history found</td></tr>'}
+              </tbody>
+            </table>
+          </body>
+        </html>
+      `;
+      const printWindow = window.open('', '', 'width=900,height=800');
+      if (printWindow) {
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 250);
+      }
+    } catch (err) {
+      console.error('Print history error:', err);
+      alert('Error printing history');
+    }
+  };
+
   const filteredWorkOrders = workOrders.filter((wo) => {
     const matchesSearch =
       wo.work_order_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -148,6 +292,10 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
     const matchesStatus = filterStatus === 'all' || wo.status === filterStatus;
     const matchesPriority = filterPriority === 'all' || wo.priority === filterPriority;
     return matchesSearch && matchesStatus && matchesPriority;
+  }).sort((a, b) => {
+    const dateA = new Date(a.created_at || (a as any).createdAt).getTime() || 0;
+    const dateB = new Date(b.created_at || (b as any).createdAt).getTime() || 0;
+    return dateB - dateA;
   });
 
   const statusCounts = {
@@ -189,12 +337,20 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
   };
 
   const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'maintenance': return 'bg-green-100 text-green-700 border-green-300';
-      case 'repair': return 'bg-orange-100 text-orange-700 border-orange-300';
-      case 'downtime': return 'bg-red-100 text-red-700 border-red-300';
-      case 'on hold': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-      default: return 'bg-gray-100 text-gray-700 border-gray-300';
+    const t = type?.toLowerCase();
+    switch (t) {
+      case 'maintenance':
+      case 'preventive':
+      case 'inspection':
+        return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'repair':
+      case 'downtime':
+        return 'bg-rose-100 text-rose-700 border-rose-200';
+      case 'on hold':
+      case 'on-hold':
+        return 'bg-amber-100 text-amber-700 border-amber-200';
+      default:
+        return 'bg-slate-100 text-slate-600 border-slate-200';
     }
   };
 
@@ -349,6 +505,9 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
                   <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
                     Scheduled
                   </th>
+                  <th className="px-3 py-2.5 text-right text-xs font-bold text-gray-700 uppercase tracking-wider">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -403,15 +562,31 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
                       </div>
                     </td>
                     <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-1.5 text-xs text-gray-700">
-                        <Clock size={12} className="text-gray-400" />
-                        {new Date(wo.schedule_date).toLocaleDateString('id-ID', {
-                          day: 'numeric',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5 text-xs text-gray-700">
+                          <Clock size={12} className="text-gray-400" />
+                          {new Date(wo.schedule_date).toLocaleDateString('id-ID', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </div>
+                        {renderDuration(wo)}
                       </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePrintMachineHistory(wo);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-bold border border-indigo-200 transition-all ml-auto"
+                        title="Print Machine History"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                        Print History
+                      </button>
                     </td>
                   </tr>
                 ))}

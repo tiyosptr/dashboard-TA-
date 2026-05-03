@@ -226,9 +226,12 @@ export default function MachineDetail({ machine, onClose }: MachineDetailProps) 
               </h3>
               <div className="space-y-5">
                 <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col">
                     <span className="text-sm text-gray-700 font-semibold">Throughput</span>
-                    <span className="text-3xl font-black text-purple-700">{machine.metrics.throughput}</span>
+                    <div>
+                      <span className="text-3xl font-black text-purple-700">{machine.metrics.throughput}</span>
+                      <span className="text-sm font-semibold text-purple-500 ml-1">unit/jam</span>
+                    </div>
                   </div>
                   <p className="text-xs text-gray-600 font-medium">units per hour</p>
                 </div>

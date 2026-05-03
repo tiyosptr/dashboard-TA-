@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Plus, Clock, AlertCircle, Play, Settings, Search, Filter, MapPin, PauseCircle, AlertTriangle, PowerOff, ChevronDown, ChevronRight, Layers } from 'lucide-react';
 import PreventiveMaintenanceForm from './preventive-maintenance-form';
 import useSWR, { mutate as swrMutate } from 'swr';
@@ -72,22 +72,29 @@ export default function MaintenanceSchedule() {
   const [lineFilter, setLineFilter] = useState('all');
   const [collapsedLines, setCollapsedLines] = useState<Set<string>>(new Set());
 
-  const { data: apiResponse, isLoading, isValidating } = useSWR('/api/maintenance/scheduled', fetcher, {
+  const { data: apiResponse, isLoading, isValidating, mutate } = useSWR('/api/maintenance/scheduled', fetcher, {
     refreshInterval: 10000,
     keepPreviousData: true,
   });
+
+  const { data: linesRes } = useSWR('/api/lines', fetcher);
+  const uniqueLines = useMemo(() => {
+    return linesRes?.success ? linesRes.data.map((l: any) => ({ id: l.id, name: l.name })) : [];
+  }, [linesRes]);
+
+  // Listen for global data updates
+  useEffect(() => {
+    const handleUpdate = () => {
+      console.log('[MaintenanceSchedule] Data update event received, refreshing...');
+      mutate();
+    };
+    window.addEventListener('machine-data-updated', handleUpdate);
+    return () => window.removeEventListener('machine-data-updated', handleUpdate);
+  }, [mutate]);
+
   const machines = apiResponse?.success ? apiResponse.data : [];
 
-  // Get unique lines for filter
-  const uniqueLines = useMemo(() => {
-    const lines = new Map();
-    machines.forEach((m: any) => {
-      if (m.line_id && m.line_name) {
-        lines.set(m.line_id, m.line_name);
-      }
-    });
-    return Array.from(lines.entries()).map(([id, name]) => ({ id, name }));
-  }, [machines]);
+  // Derived filtered machines logic follows...
 
   // Filter and search logic
   const filteredMachines = useMemo(() => {
@@ -182,7 +189,7 @@ export default function MaintenanceSchedule() {
             className="bg-transparent border-none focus:ring-0 text-sm font-semibold text-slate-700 w-full outline-none"
           >
             <option value="all">All Lines</option>
-            {uniqueLines.map(line => (
+            {uniqueLines.map((line: any) => (
               <option key={line.id} value={line.id}>{line.name}</option>
             ))}
           </select>

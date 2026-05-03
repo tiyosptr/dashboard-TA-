@@ -62,7 +62,7 @@ async function chunkedInQuery(
             while (hasMore) {
                 const start = page * pageSize;
                 const end = start + pageSize - 1;
-                
+
                 let query = supabaseAdmin
                     .from(table)
                     .select(selectFields)
@@ -74,7 +74,7 @@ async function chunkedInQuery(
                 }
 
                 const { data, error } = await query;
-                
+
                 if (error) {
                     console.error(`Error querying ${table} (chunk, page ${page}):`, error);
                     break;
@@ -83,7 +83,7 @@ async function chunkedInQuery(
                 if (data && data.length > 0) {
                     allData = allData.concat(data);
                     page++;
-                    
+
                     if (data.length < pageSize) {
                         hasMore = false;
                     }
@@ -180,7 +180,7 @@ async function getFilteredDataItemIds(
     while (hasMore) {
         const start = page * pageSize;
         const end = start + pageSize - 1;
-        
+
         let diQuery = supabaseAdmin.from('data_items').select('id').range(start, end);
 
         if (lineProcessIds !== null) {
@@ -200,7 +200,7 @@ async function getFilteredDataItemIds(
         }
 
         const { data: diData, error } = await diQuery;
-        
+
         if (error) {
             console.error('[getFilteredDataItemIds] Pagination error:', error);
             break;
@@ -209,7 +209,7 @@ async function getFilteredDataItemIds(
         if (diData && diData.length > 0) {
             allDataItems = allDataItems.concat(diData);
             page++;
-            
+
             if (diData.length < pageSize) {
                 hasMore = false;
             }
@@ -217,7 +217,7 @@ async function getFilteredDataItemIds(
             hasMore = false;
         }
     }
-    
+
     return allDataItems.map((d: any) => d.id);
 }
 
@@ -338,11 +338,11 @@ export async function GET(request: NextRequest) {
             // 1. Actual Output — filtered by data_item IDs
             // Gunakan shift window jika ada shift aktif, fallback ke day window
             const activeShiftWindow = await getActiveShiftWindow(actualShiftId);
-            
+
             let queryStart: Date;
             let queryEnd: Date;
             let hoursInWindow: number;
-            
+
             if (activeShiftWindow) {
                 // Gunakan shift window
                 queryStart = new Date(activeShiftWindow.shift_start_ts);
@@ -361,7 +361,7 @@ export async function GET(request: NextRequest) {
                 hoursInWindow = 24;
                 console.log('[Actual Output] Using day window (fallback)');
             }
-            
+
             const actualOutputs = await queryActualOutput(dataItemIds, queryStart, queryEnd)
 
             // Generate hour slots based on shift window
@@ -429,14 +429,14 @@ export async function GET(request: NextRequest) {
                     actualShiftId,
                     undefined, // Biarkan undefined agar menggunakan waktu sekarang
                 );
-                
+
                 console.log('[OEE Calculation] Shift window:', {
                     shift_id: availData.shift_id,
                     shift_name: availData.shift_name,
                     shift_start: availData.shift_start_ts,
                     shift_end: availData.shift_end_ts,
                 });
-                
+
                 // Simpan ke DB secara async (tidak blocking response)
                 // Ambil line_process_id (VIFG / proses terakhir) untuk FK
                 supabaseAdmin
@@ -704,10 +704,10 @@ export async function GET(request: NextRequest) {
 
                 // Get shift window untuk query yang konsisten
                 const shiftWindow = await getActiveShiftWindow(actualShiftId);
-                
+
                 let queryStart: string;
                 let queryEnd: string;
-                
+
                 if (shiftWindow) {
                     // Gunakan shift window
                     queryStart = shiftWindow.shift_start_ts;
@@ -727,7 +727,7 @@ export async function GET(request: NextRequest) {
                 // Count actual data_items per line_process dalam shift window
                 // Ini adalah "Produced" yang sebenarnya dari source data
                 let dataItemsCountMap: Record<string, { total: number; pass: number; reject: number }> = {};
-                
+
                 if (lpIds.length > 0) {
                     const rawData = await chunkedInQuery(
                         'data_items',
@@ -739,7 +739,7 @@ export async function GET(request: NextRequest) {
                             .lt('created_at', queryEnd)
                             .in('status', ['pass', 'reject'])
                     );
-                    
+
                     rawData.forEach((row: any) => {
                         const lpId = row.line_process_id;
                         if (lpId) {
@@ -761,7 +761,7 @@ export async function GET(request: NextRequest) {
                 result.defectByProcess = lpList.map((lp: any) => {
                     const counts = dataItemsCountMap[lp.id] || { total: 0, pass: 0, reject: 0 };
                     const rate = counts.total > 0 ? (counts.reject / counts.total) * 100 : 0;
-                    
+
                     return {
                         lineProcessId: lp.id,
                         processName: lp.process?.name || 'Unknown',
@@ -786,7 +786,7 @@ export async function GET(request: NextRequest) {
             const sevenDaysAgo = new Date(now)
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
             sevenDaysAgo.setHours(0, 0, 0, 0) // Start of day 7 days ago
-            
+
             const endOfToday = new Date(now)
             endOfToday.setHours(23, 59, 59, 999) // End of today
 
@@ -801,7 +801,7 @@ export async function GET(request: NextRequest) {
                 const dateStr = d.toISOString().split('T')[0];
                 trendDays[dateStr] = { pass: 0, reject: 0, target: 1000 }
             }
-            
+
             console.log('[Trend] Initialized days:', Object.keys(trendDays));
 
             // Query data_items directly untuk trend (lebih akurat dari actual_output)
@@ -830,32 +830,32 @@ export async function GET(request: NextRequest) {
                         if (pnData && pnData.length > 0) {
                             const pnIds = pnData.map((p: any) => p.id);
                             console.log('[Trend] Found PN IDs:', pnIds.length);
-                            
+
                             // Get ALL SNs for this PN with pagination
                             let allSnData: any[] = [];
                             let snPage = 0;
                             let hasMoreSn = true;
                             const snPageSize = 1000;
-                            
+
                             while (hasMoreSn) {
                                 const snStart = snPage * snPageSize;
                                 const snEnd = snStart + snPageSize - 1;
-                                
+
                                 const { data: snData, error: snError } = await supabaseAdmin
                                     .from('sn')
                                     .select('id')
                                     .in('part_number_id', pnIds)
                                     .range(snStart, snEnd);
-                                
+
                                 if (snError) {
                                     console.error('[Trend] Error fetching SNs:', snError);
                                     break;
                                 }
-                                
+
                                 if (snData && snData.length > 0) {
                                     allSnData = allSnData.concat(snData);
                                     snPage++;
-                                    
+
                                     if (snData.length < snPageSize) {
                                         hasMoreSn = false;
                                     }
@@ -875,15 +875,15 @@ export async function GET(request: NextRequest) {
                     // Skip if PN filter resulted in no SNs
                     if (!pn || (snIds && snIds.length > 0)) {
                         let allTrendData: any[] = [];
-                        
+
                         // If we have SN filter and it's large, use chunked approach
                         if (snIds && snIds.length > CHUNK_SIZE) {
                             console.log('[Trend] Using chunked query for', snIds.length, 'SNs');
-                            
+
                             // Split SNs into chunks
                             for (let i = 0; i < snIds.length; i += CHUNK_SIZE) {
                                 const snChunk = snIds.slice(i, i + CHUNK_SIZE);
-                                
+
                                 // Paginate within each chunk
                                 let page = 0;
                                 let hasMore = true;
@@ -911,7 +911,7 @@ export async function GET(request: NextRequest) {
                                     if (trendData && trendData.length > 0) {
                                         allTrendData = allTrendData.concat(trendData);
                                         page++;
-                                        
+
                                         if (trendData.length < pageSize) {
                                             hasMore = false;
                                         }
@@ -923,7 +923,7 @@ export async function GET(request: NextRequest) {
                         } else {
                             // Standard pagination (no SN filter or small SN list)
                             console.log('[Trend] Using standard pagination');
-                            
+
                             // First, check total count without status filter to see if we're missing data
                             let countQuery = supabaseAdmin
                                 .from('data_items')
@@ -931,14 +931,14 @@ export async function GET(request: NextRequest) {
                                 .eq('line_process_id', firstProcess.id)
                                 .gte('created_at', sevenDaysAgo.toISOString())
                                 .lte('created_at', now.toISOString());
-                            
+
                             if (snIds && snIds.length > 0 && snIds.length <= CHUNK_SIZE) {
                                 countQuery = countQuery.in('sn', snIds);
                             }
-                            
+
                             const { count: totalCount } = await countQuery;
                             console.log('[Trend] Total data_items in range (all statuses):', totalCount);
-                            
+
                             // Also check with status filter
                             let countWithStatusQuery = supabaseAdmin
                                 .from('data_items')
@@ -947,15 +947,15 @@ export async function GET(request: NextRequest) {
                                 .in('status', ['pass', 'reject'])
                                 .gte('created_at', sevenDaysAgo.toISOString())
                                 .lte('created_at', endOfToday.toISOString());
-                            
+
                             if (snIds && snIds.length > 0 && snIds.length <= CHUNK_SIZE) {
                                 countWithStatusQuery = countWithStatusQuery.in('sn', snIds);
                             }
-                            
+
                             const { count: countWithStatus } = await countWithStatusQuery;
                             console.log('[Trend] Total data_items with pass/reject status:', countWithStatus);
                             console.log('[Trend] Missing items (other statuses):', (totalCount || 0) - (countWithStatus || 0));
-                            
+
                             // Now fetch with status filter
                             let page = 0;
                             let hasMore = true;
@@ -1007,13 +1007,13 @@ export async function GET(request: NextRequest) {
                         allTrendData.forEach((row: any) => {
                             const status = row.status || 'null';
                             statusCounts[status] = (statusCounts[status] || 0) + 1;
-                            
+
                             const dateStr = new Date(row.created_at).toISOString().split('T')[0];
                             dateDistribution[dateStr] = (dateDistribution[dateStr] || 0) + 1;
                         });
                         console.log('[Trend] Status breakdown:', statusCounts);
                         console.log('[Trend] Date distribution:', dateDistribution);
-                        
+
                         // Calculate total from breakdown
                         const totalFromBreakdown = Object.values(statusCounts).reduce((sum: number, count: number) => sum + count, 0);
                         console.log('[Trend] Total from breakdown:', totalFromBreakdown, '| Array length:', allTrendData.length);
@@ -1021,7 +1021,7 @@ export async function GET(request: NextRequest) {
                         // Process trend data - count all items from first process as "produced"
                         let processedCount = 0;
                         let unmatchedDates: string[] = [];
-                        
+
                         allTrendData.forEach((row: any) => {
                             const d = new Date(row.created_at).toISOString().split('T')[0];
                             if (trendDays[d]) {
@@ -1034,11 +1034,11 @@ export async function GET(request: NextRequest) {
                                 }
                             }
                         });
-                        
+
                         console.log('[Trend] Processed records from first process:', processedCount);
                         console.log('[Trend] Unmatched dates:', unmatchedDates);
-                        
-                        // Now get reject count from ALL processes (using defect_by_process table)
+
+                        // 3. Reject count from ALL processes - REAL TIME (Actual)
                         if (lineId) {
                             const { data: lpForReject } = await supabaseAdmin
                                 .from('line_process')
@@ -1048,25 +1048,28 @@ export async function GET(request: NextRequest) {
                             const lpIds = lpForReject?.map((lp: any) => lp.id) || [];
                             
                             if (lpIds.length > 0) {
-                                const { data: defectData } = await supabaseAdmin
-                                    .from('defect_by_process')
-                                    .select('recorded_date, total_reject')
-                                    .in('line_process_id', lpIds)
-                                    .gte('recorded_date', sevenDaysAgo.toISOString().split('T')[0])
-                                    .lte('recorded_date', endOfToday.toISOString().split('T')[0]);
+                                console.log('[Trend] Fetching actual rejects from data_items for processes:', lpIds.length);
                                 
-                                console.log('[Trend] Defect records found:', defectData?.length || 0);
+                                const actualRejects = await chunkedInQuery(
+                                    'data_items',
+                                    'created_at',
+                                    'line_process_id',
+                                    lpIds,
+                                    (q: any) => q
+                                        .eq('status', 'reject')
+                                        .gte('created_at', sevenDaysAgo.toISOString())
+                                        .lte('created_at', endOfToday.toISOString())
+                                );
                                 
-                                // Sum reject by date
-                                (defectData || []).forEach((defect: any) => {
-                                    const dateStr = defect.recorded_date;
+                                actualRejects.forEach((r: any) => {
+                                    const dateStr = new Date(r.created_at).toISOString().split('T')[0];
                                     if (trendDays[dateStr]) {
-                                        trendDays[dateStr].reject += defect.total_reject || 0;
+                                        trendDays[dateStr].reject++;
                                     }
                                 });
                             }
                         }
-                        
+
                         console.log('[Trend] Final trendDays before mapping:', JSON.stringify(trendDays));
                     } else {
                         console.log('[Trend] Skipping query - PN filter has no results');
@@ -1078,14 +1081,14 @@ export async function GET(request: NextRequest) {
                 const row = trendDays[dStr]
                 const totalProduced = row.pass // Total items from first process (entry point)
                 const totalPass = totalProduced - row.reject // Pass = Total - Reject
-                
+
                 console.log('[Trend] Building trend item for', dStr, ':', {
                     totalProduced: totalProduced,
                     totalReject: row.reject,
                     totalPass: totalPass,
                     target: row.target
                 });
-                
+
                 const trendItem = {
                     date: dStr,
                     output: totalProduced, // Total produced (from first process)
@@ -1096,7 +1099,7 @@ export async function GET(request: NextRequest) {
                     efficiency: Math.min(Math.round((totalProduced / row.target) * 10000) / 100, 100),
                     downtime: 0, // Will be populated below
                 };
-                
+
                 return trendItem;
             })
 
@@ -1117,45 +1120,44 @@ export async function GET(request: NextRequest) {
                 console.log('[Trend Downtime] Machine IDs for line:', machineIds);
 
                 if (machineIds.length > 0) {
-                    // Query downtime for last 7 days
+                    // Query downtime for last 7 days - REAL TIME
                     const { data: downtimeData, error: downtimeError } = await supabaseAdmin
                         .from('machine_status_log')
-                        .select('start_time, duration_seconds, machine_id, status')
+                        .select('start_time, end_time, duration_seconds, machine_id, status')
                         .eq('status', 'downtime')
                         .in('machine_id', machineIds)
                         .gte('start_time', sevenDaysAgo.toISOString())
-                        .lte('start_time', endOfToday.toISOString())
-                        .not('duration_seconds', 'is', null);
+                        .lte('start_time', endOfToday.toISOString());
 
                     if (downtimeError) {
                         console.error('[Trend Downtime] Query error:', downtimeError);
                     }
 
-                    console.log('[Trend Downtime] Records found:', downtimeData?.length || 0);
-                    console.log('[Trend Downtime] Sample data:', downtimeData?.slice(0, 3));
-
                     // Group downtime by date
-                    const downtimeByDate: Record<string, number> = {};
+                    const downtimeByDateSeconds: Record<string, number> = {};
+                    const nowTime = new Date();
+                    
                     (downtimeData || []).forEach((d: any) => {
-                        const dateStr = new Date(d.start_time).toISOString().split('T')[0];
-                        if (!downtimeByDate[dateStr]) downtimeByDate[dateStr] = 0;
-                        downtimeByDate[dateStr] += d.duration_seconds || 0;
+                        const start = new Date(d.start_time);
+                        const dateStr = start.toISOString().split('T')[0];
+                        
+                        let duration = 0;
+                        if (d.duration_seconds !== null) {
+                            duration = Number(d.duration_seconds);
+                        } else {
+                            // Ongoing event
+                            const end = nowTime < endOfToday ? nowTime : endOfToday;
+                            duration = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
+                        }
+                        
+                        if (!downtimeByDateSeconds[dateStr]) downtimeByDateSeconds[dateStr] = 0;
+                        downtimeByDateSeconds[dateStr] += duration;
                     });
-
-                    console.log('[Trend Downtime] Downtime by date (seconds):', downtimeByDate);
-                    
-                    // Convert to hours
-                    const downtimeByDateHours: Record<string, number> = {};
-                    Object.keys(downtimeByDate).forEach(date => {
-                        downtimeByDateHours[date] = Math.round((downtimeByDate[date] / 3600) * 100) / 100;
-                    });
-                    
-                    console.log('[Trend Downtime] Downtime by date (hours):', downtimeByDateHours);
 
                     // Add downtime to trend data
                     result.trend = result.trend.map((item: any) => ({
                         ...item,
-                        downtime: downtimeByDateHours[item.date] || 0
+                        downtime: Math.round((downtimeByDateSeconds[item.date] || 0) / 36.0) / 100 // Convert to hours
                     }));
                 }
             }
@@ -1168,7 +1170,7 @@ export async function GET(request: NextRequest) {
                 const dateStr = d.toISOString().split('T')[0];
                 historyDays[dateStr] = { maintenance: 0, downtime: 0, reject: 0 }
             }
-            
+
             console.log('[History] ========== HISTORY DEBUG START ==========');
             console.log('[History] Current time (now):', now.toISOString());
             console.log('[History] Initialized days:', Object.keys(historyDays));
@@ -1190,7 +1192,7 @@ export async function GET(request: NextRequest) {
                         ?.map((lp: any) => lp.process?.machine_id)
                         .filter((id: any) => id) || []
                 )];
-                
+
                 const lpIds = lpDataForHistory?.map((lp: any) => lp.id) || [];
 
                 console.log('[History] Machine IDs:', machineIds);
@@ -1198,48 +1200,38 @@ export async function GET(request: NextRequest) {
                 console.log('[History] Line Process IDs:', lpIds);
 
                 if (machineIds.length > 0) {
-                    console.log('[History] ✓ machineIds found, querying machine_status_log...');
-                    
-                    // Query machine_status_log for downtime (same as Trend Analysis)
+                    // Query machine_status_log for downtime - REAL TIME
                     const { data: downtimeData, error: downtimeError } = await supabaseAdmin
                         .from('machine_status_log')
-                        .select('start_time, duration_seconds, machine_id, status')
+                        .select('start_time, end_time, duration_seconds, machine_id, status')
                         .eq('status', 'downtime')
                         .in('machine_id', machineIds)
                         .gte('start_time', sevenDaysAgo.toISOString())
-                        .lte('start_time', endOfToday.toISOString())
-                        .not('duration_seconds', 'is', null);
+                        .lte('start_time', endOfToday.toISOString());
 
                     if (downtimeError) {
                         console.error('[History] Downtime query error:', downtimeError);
                     }
 
-                    console.log('[History] Downtime records found:', downtimeData?.length || 0);
-                    console.log('[History] Sample downtime records:', JSON.stringify(downtimeData?.slice(0, 5), null, 2));
-
                     // Group downtime by date
                     (downtimeData || []).forEach((record: any) => {
-                        const recordDate = new Date(record.start_time);
-                        const dateStr = recordDate.toISOString().split('T')[0];
+                        const start = new Date(record.start_time);
+                        const dateStr = start.toISOString().split('T')[0];
                         
-                        console.log('[History] Processing downtime record:', {
-                            start_time: record.start_time,
-                            parsed_date: recordDate.toISOString(),
-                            dateStr: dateStr,
-                            duration_seconds: record.duration_seconds,
-                            in_range: historyDays[dateStr] !== undefined
-                        });
+                        let durationSeconds = 0;
+                        if (record.duration_seconds !== null) {
+                            durationSeconds = Number(record.duration_seconds);
+                        } else {
+                            const end = now < endOfToday ? now : endOfToday;
+                            durationSeconds = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
+                        }
                         
                         if (historyDays[dateStr]) {
-                            // Convert duration_seconds to MINUTES (not hours) for better scale
-                            const minutes = (record.duration_seconds || 0) / 60;
-                            historyDays[dateStr].downtime += minutes;
-                            console.log('[History] ✓✓ Added DOWNTIME:', minutes.toFixed(2), 'minutes to', dateStr, '| New total:', historyDays[dateStr].downtime.toFixed(2));
-                        } else {
-                            console.log('[History] ✗ Date NOT in range:', dateStr, '| Expected one of:', Object.keys(historyDays).join(', '));
+                            // Convert duration_seconds to MINUTES
+                            historyDays[dateStr].downtime += durationSeconds / 60;
                         }
                     });
-                    
+
                     // Query work_order_history for maintenance only
                     const { data: maintenanceData, error: maintenanceError } = await supabaseAdmin
                         .from('work_order_history')
@@ -1247,15 +1239,11 @@ export async function GET(request: NextRequest) {
                         .in('machine_id', machineIds)
                         .gte('event_start', sevenDaysAgo.toISOString())
                         .lte('event_start', endOfToday.toISOString())
-                        .not('event_start', 'is', null)
-                        .not('duration_seconds', 'is', null);
+                        .not('event_start', 'is', null);
 
                     if (maintenanceError) {
                         console.error('[History] Maintenance query error:', maintenanceError);
                     }
-
-                    console.log('[History] Maintenance records found:', maintenanceData?.length || 0);
-                    console.log('[History] Sample maintenance records:', JSON.stringify(maintenanceData?.slice(0, 5), null, 2));
 
                     // Group maintenance by date
                     (maintenanceData || []).forEach((wo: any) => {
@@ -1263,68 +1251,37 @@ export async function GET(request: NextRequest) {
                         const dateStr = woDate.toISOString().split('T')[0];
                         const eventType = (wo.event_type || '').toLowerCase();
                         
-                        console.log('[History] Processing maintenance record:', {
-                            event_start: wo.event_start,
-                            parsed_date: woDate.toISOString(),
-                            dateStr: dateStr,
-                            type: wo.event_type,
-                            duration_seconds: wo.duration_seconds,
-                            in_range: historyDays[dateStr] !== undefined
-                        });
-                        
                         if (historyDays[dateStr]) {
                             // Only count maintenance-related events (in MINUTES)
                             if (eventType.includes('maintenance') || eventType === 'preventive') {
-                                const minutes = (wo.duration_seconds || 0) / 60;
+                                const durationSeconds = wo.duration_seconds || 0;
+                                // Make sure even 0-duration maintenance shows up visually as at least 1 min
+                                const minutes = durationSeconds > 0 ? durationSeconds / 60 : 1;
                                 historyDays[dateStr].maintenance += minutes;
-                                console.log('[History] ✓✓ Added MAINTENANCE:', minutes.toFixed(2), 'minutes to', dateStr, '| New total:', historyDays[dateStr].maintenance.toFixed(2));
-                            } else {
-                                console.log('[History] ⚠ Skipping non-maintenance event:', wo.event_type);
                             }
-                        } else {
-                            console.log('[History] ✗ Date NOT in range:', dateStr, '| Expected one of:', Object.keys(historyDays).join(', '));
                         }
                     });
-                    
-                    console.log('[History] ========== After work orders processing ==========');
-                    console.log('[History] Final historyDays:', JSON.stringify(historyDays, null, 2));
-                    console.log('[History] ========== HISTORY DEBUG END ==========');
-                } else {
-                    console.log('[History] ✗ No machine IDs found for this line');
-                    console.log('[History] ========== HISTORY DEBUG END ==========');
-                }
 
-                if (lpIds.length > 0) {
-                    // Query defect_by_process for reject count
-                    const { data: defectData, error: defectError } = await supabaseAdmin
-                        .from('defect_by_process')
-                        .select('recorded_date, total_reject, line_process_id')
-                        .in('line_process_id', lpIds)
-                        .gte('recorded_date', sevenDaysAgo.toISOString().split('T')[0])
-                        .lte('recorded_date', endOfToday.toISOString().split('T')[0]);
-
-                    if (defectError) {
-                        console.error('[History] Defect query error:', defectError);
-                    }
-
-                    console.log('[History] Defect records found:', defectData?.length || 0);
-                    console.log('[History] Sample defects:', defectData?.slice(0, 3));
-
-                    // Group by date
-                    (defectData || []).forEach((defect: any) => {
-                        const dateStr = defect.recorded_date; // Already in YYYY-MM-DD format
-                        console.log('[History] Processing defect:', {
-                            date: dateStr,
-                            total_reject: defect.total_reject
-                        });
+                    // Query data_items for actual reject count - REAL TIME
+                    if (lpIds.length > 0) {
+                        const actualRejects = await chunkedInQuery(
+                            'data_items',
+                            'created_at',
+                            'line_process_id',
+                            lpIds,
+                            (q: any) => q
+                                .eq('status', 'reject')
+                                .gte('created_at', sevenDaysAgo.toISOString())
+                                .lte('created_at', endOfToday.toISOString())
+                        );
                         
-                        if (historyDays[dateStr]) {
-                            historyDays[dateStr].reject += defect.total_reject || 0;
-                            console.log('[History] Added reject:', defect.total_reject, 'to', dateStr);
-                        } else {
-                            console.log('[History] Date not in range:', dateStr);
-                        }
-                    });
+                        actualRejects.forEach((r: any) => {
+                            const dateStr = new Date(r.created_at).toISOString().split('T')[0];
+                            if (historyDays[dateStr]) {
+                                historyDays[dateStr].reject++;
+                            }
+                        });
+                    }
                 }
             } else {
                 console.log('[History] ✗ No lineId provided, skipping work order query');
@@ -1339,7 +1296,7 @@ export async function GET(request: NextRequest) {
                 downtime: Math.round(historyDays[dStr].downtime * 10) / 10, // Minutes, round to 1 decimal
                 reject: historyDays[dStr].reject,
             }));
-            
+
             console.log('[History] Final result.history being sent to frontend:', JSON.stringify(result.history, null, 2));
         }
 

@@ -15,6 +15,8 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
+import { calculateElapsedShiftTime } from '@/utils/helpers';
+import { getActiveShiftWindow } from '@/services/calculation/shift-window';
 
 // ─── Result type ──────────────────────────────────────────────────────
 export interface ThroughputTriggerResult {
@@ -36,10 +38,10 @@ export interface ThroughputTriggerResult {
 // ─────────────────────────────────────────────────────────────────────
 export async function triggerThroughputUpdate(
     line_process_id: string,
-    intervalSeconds: number = 10
+    intervalSeconds: number = 10 // Not used for calculation anymore, kept for signature compatibility
 ): Promise<ThroughputTriggerResult> {
     try {
-        console.log('[throughput] ▶ START | line_process_id:', line_process_id, '| Δt:', intervalSeconds, 's');
+        console.log('[throughput] ▶ START | line_process_id:', line_process_id);
 
         // ── 1. Resolve line_process → process → machine + line ────────
         const { data: lpData, error: lpError } = await supabaseAdmin
@@ -77,14 +79,12 @@ export async function triggerThroughputUpdate(
         const machineName = machineRow?.name_machine || 'Unknown';
 
         // ── 3. Kumpulkan semua line_process_id milik mesin ini ────────
-        //    Satu mesin bisa punya banyak process & line_process.
-        //    ΔQ dihitung dari ALL line_process pada mesin.
         const { data: machineProcesses } = await supabaseAdmin
             .from('process')
             .select('id')
             .eq('machine_id', machine_id);
 
-        let allLpIds: string[] = [line_process_id]; // minimal LP yang di-trigger
+        let allLpIds: string[] = [line_process_id];
 
         if (machineProcesses && machineProcesses.length > 0) {
             const pIds = machineProcesses.map((p: any) => p.id);
@@ -100,58 +100,62 @@ export async function triggerThroughputUpdate(
 
         console.log('[throughput] Cakupan line_process_ids:', allLpIds.length, 'ids');
 
-        // ── 4. Hitung ΔQ: jumlah item PASS dari data_items ───────────
-        //    dalam Δt terakhir, untuk semua line_process milik mesin ini
-        const now = new Date();
-        const intervalStart = new Date(now.getTime() - intervalSeconds * 1000);
-
-        console.log('[throughput] Interval:', intervalStart.toISOString(), '→', now.toISOString());
-
-        const { count: passCount, error: countError } = await supabaseAdmin
-            .from('data_items')
-            .select('id', { count: 'exact', head: true })
-            .in('line_process_id', allLpIds)
-            .eq('status', 'pass')
-            .gte('created_at', intervalStart.toISOString())
-            .lte('created_at', now.toISOString());
-
-        if (countError) {
-            console.error('[throughput] ✗ count query error:', countError.message);
-            return { success: false, step: 'count_pass', error: countError.message };
+        // ── 4. Ambil Shift Aktif ─────────────────────────────────────
+        const shiftWindow = await getActiveShiftWindow();
+        if (!shiftWindow) {
+            return {
+                success: false, step: 'detect_shift',
+                error: 'No active shift found',
+            };
         }
 
-        const totalPass = passCount ?? 0;
+        const { shift_id: activeShiftId, shift_start_ts, shift_end_ts } = shiftWindow;
 
-        // ── 5. Hitung Throughput T = ΔQ / Δt ─────────────────────────
-        const throughputRaw = totalPass / intervalSeconds;
-        const throughput = Math.round(throughputRaw * 10) / 10; // 1 desimal
+        // ── 5. Hitung ΔQ: jumlah item PASS dari data_items (dalam Shift) ───────────
+        let totalPassInShift = 0;
+        if (shift_start_ts && shift_end_ts) {
+            const { count, error: countError } = await supabaseAdmin
+                .from('data_items')
+                .select('id', { count: 'exact', head: true })
+                .in('line_process_id', allLpIds)
+                .eq('status', 'pass')
+                .gte('created_at', shift_start_ts)
+                .lte('created_at', shift_end_ts);
 
-        console.log(`[throughput] ΔQ=${totalPass} pass | Δt=${intervalSeconds}s | T=${throughput} unit/s`);
+            if (countError) {
+                console.error('[throughput] ✗ count query error:', countError.message);
+                return { success: false, step: 'count_pass', error: countError.message };
+            }
+            totalPassInShift = count ?? 0;
+        }
 
-        // ── 6. Upsert ke troughput_machine ────────────────────────────
-        //    Karena tabel tidak punya created_at, kita simpan hanya 1 record
-        //    per machine_id dengan cara: DELETE lama → INSERT baru.
-        //    Ini memastikan selalu ada nilai terbaru per mesin.
+        // ── 6. Hitung Throughput Rata-rata Shift (T = ΔQ / Δt) ─────────────────────────
+        const elapsedSeconds = calculateElapsedShiftTime(shift_start_ts, shift_end_ts);
+        const elapsedHours = Math.max(elapsedSeconds, 1) / 3600; // minimal 1 detik
+        const actualThroughput = Math.round(totalPassInShift / elapsedHours);
 
-        // 6a. Hapus record lama untuk machine ini
+        console.log(`[throughput] ΔQ=${totalPassInShift} pass | Δt=${elapsedHours.toFixed(2)}h | T=${actualThroughput} unit/h`);
+
+        // ── 7. Upsert ke troughput_machine ────────────────────────────
+        // 7a. Hapus record lama untuk machine ini
         const { error: deleteError } = await supabaseAdmin
             .from('troughput_machine')
             .delete()
             .eq('machine_id', machine_id);
 
         if (deleteError) {
-            // Bukan fatal — lanjut insert
             console.warn('[throughput] ⚠ Delete lama gagal (dilanjutkan):', deleteError.message);
         }
 
-        // 6b. Insert record baru
+        // 7b. Insert record baru
         const insertPayload = {
-            troughput: throughput,              // numeric (1 desimal precision)
-            total_pass: totalPass,              // bigint
-            interval_time: intervalSeconds,     // bigint
+            troughput: actualThroughput,        // numeric (unit/jam)
+            total_pass: totalPassInShift,       // bigint
+            interval_time: Math.round(elapsedSeconds / 60), // interval time in minutes for consistency with line
             machine_id,
             line_id: line_id ?? undefined,      // nullable
             line_process_id,
+            shift_id: activeShiftId,            // Include shift_id for consistency
         };
 
         console.log('[throughput] Inserting:', JSON.stringify(insertPayload));
@@ -171,14 +175,14 @@ export async function triggerThroughputUpdate(
                 machine_name: machineName,
                 line_id: line_id ?? undefined,
                 line_process_id,
-                total_pass: totalPass,
-                interval_time: intervalSeconds,
-                throughput,
+                total_pass: totalPassInShift,
+                interval_time: Math.round(elapsedSeconds / 60),
+                throughput: actualThroughput,
                 error: `${insertError.message} | ${insertError.details || ''} | hint: ${insertError.hint || ''}`,
             };
         }
 
-        console.log('[throughput] ✓ SAVED! id:', savedRow?.id, '| machine:', machineName, '| throughput:', throughput, 'unit/s');
+        console.log('[throughput] ✓ SAVED! id:', savedRow?.id, '| machine:', machineName, '| throughput:', actualThroughput, 'unit/h');
 
         return {
             success: true,
@@ -187,9 +191,9 @@ export async function triggerThroughputUpdate(
             machine_name: machineName,
             line_id: line_id ?? undefined,
             line_process_id,
-            total_pass: totalPass,
-            interval_time: intervalSeconds,
-            throughput,
+            total_pass: totalPassInShift,
+            interval_time: Math.round(elapsedSeconds / 60),
+            throughput: actualThroughput,
         };
     } catch (err: any) {
         console.error('[throughput] ✗ EXCEPTION:', err);
@@ -248,7 +252,6 @@ export async function getThroughputHistory(
 // ─── Format helper ────────────────────────────────────────────────────
 export function formatThroughput(throughput: number | null | undefined): string {
     if (throughput === null || throughput === undefined || throughput < 0) return '—';
-    if (throughput === 0) return '0 unit/s';
-    if (throughput < 1) return `${(throughput * 60).toFixed(1)} unit/min`;
-    return `${throughput} unit/s`;
+    if (throughput === 0) return '0 unit/jam';
+    return `${throughput.toLocaleString('id-ID', { maximumFractionDigits: 1 })} unit/jam`;
 }

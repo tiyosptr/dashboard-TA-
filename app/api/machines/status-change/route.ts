@@ -58,55 +58,49 @@ export async function POST(request: NextRequest) {
                 const openEvent = openEvents[0];
                 previousStatus = openEvent.status;
 
-                // Don't create a new event if status is the same
+                // If status is the same, we still want to ensure the machine table is in sync,
+                // but we don't need to close/open new log entries.
                 if (previousStatus === new_status) {
-                    return {
-                        changed: false,
-                        message: `Machine is already in '${new_status}' status`,
-                        currentEvent: openEvent,
-                    };
-                }
+                    // Skip log updates but proceed to machine table update below
+                } else {
+                    // Safely calculate duration of the closed event.
+                    let startTime = openEvent.start_time instanceof Date 
+                        ? openEvent.start_time 
+                        : new Date(openEvent.start_time);
+                    
+                    let diffSecs = Math.floor((now.getTime() - startTime.getTime()) / 1000);
+                    if (diffSecs < 0) diffSecs = 0;
+                    
+                    previousDurationSeconds = diffSecs;
 
-                // Close the current event
-                await tx.$queryRawUnsafe(
-                    `UPDATE machine_status_log 
-                     SET end_time = $1 
-                     WHERE id = $2::uuid`,
-                    now,
-                    openEvent.id
-                );
+                    // Close the current event
+                    await tx.$queryRawUnsafe(
+                        `UPDATE machine_status_log 
+                         SET end_time = $1
+                         WHERE id = $2::uuid`,
+                        now,
+                        openEvent.id
+                    );
 
-                // Safely calculate duration of the closed event.
-                // Raw query Dates might be strings without UTC offset. 
-                // Alternatively, Prisma returns it as Date. We verify it.
-                let startTime = openEvent.start_time instanceof Date 
-                    ? openEvent.start_time 
-                    : new Date(openEvent.start_time);
-                
-                // Absolute timezone-safe diff protection
-                let diffSecs = Math.floor((now.getTime() - startTime.getTime()) / 1000);
-                if (diffSecs < 0) {
-                    // Fallback to Prisma standard query to get the properly hydrated timezone date if bugged
-                    const hydratedLog = await tx.machineStatusLog.findUnique({
-                        where: { id: openEvent.id }
+                    // 2. Insert new event (only if status changed)
+                    await tx.machineStatusLog.create({
+                        data: {
+                            machineId: machine_id,
+                            status: new_status,
+                            startTime: now,
+                        },
                     });
-                    if (hydratedLog) {
-                        diffSecs = Math.floor((now.getTime() - hydratedLog.startTime.getTime()) / 1000);
-                    }
-                    if (diffSecs < 0) diffSecs = 0; // Absolute zero clamp
                 }
-                
-                previousDurationSeconds = diffSecs;
+            } else {
+                // No open event, create one
+                await tx.machineStatusLog.create({
+                    data: {
+                        machineId: machine_id,
+                        status: new_status,
+                        startTime: now,
+                    },
+                });
             }
-
-            // 2. Insert new event
-            const newEvent = await tx.machineStatusLog.create({
-                data: {
-                    machineId: machine_id,
-                    status: new_status,
-                    startTime: now,
-                },
-            });
 
             // 3. Update machine's current status and accumulate running hours / downtime
             let totalRunningUpdate: string | undefined;
@@ -123,8 +117,8 @@ export async function POST(request: NextRequest) {
 
                 if (previousStatus === 'active' || previousStatus === 'running') {
                     totalRunningUpdate = (currentRunning + additionalHours).toFixed(4);
-                } else {
-                    // ANY other status (maintenance, downtime, on hold, inactive) is effectively downtime
+                } else if (['downtime', 'down', 'error'].includes(previousStatus?.toLowerCase() || '')) {
+                    // Only count actual downtime towards total_downtime_hours
                     totalDowntimeUpdate = (currentDowntime + additionalHours).toFixed(4);
                 }
             }
@@ -152,11 +146,10 @@ export async function POST(request: NextRequest) {
             const updatedMachine = updatedMachineResult[0];
 
             return {
-                changed: true,
+                changed: previousStatus !== new_status,
                 previousStatus,
                 newStatus: new_status,
                 previousDurationSeconds,
-                newEvent,
                 machine: {
                     id: updatedMachine.id,
                     status: updatedMachine.status,

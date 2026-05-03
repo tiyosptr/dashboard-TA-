@@ -104,7 +104,21 @@ export async function POST(request: NextRequest) {
       },
     })
     
-    // ... (rest of the logic)
+    // Server-side side effect: Update machine status if needed
+    if (workOrder.machineId && (workOrderData.type?.toLowerCase() === 'preventive' || workOrderData.type?.toLowerCase() === 'maintenance')) {
+      try {
+        // Construct base URL for internal API call
+        const baseUrl = request.nextUrl.origin;
+        await fetch(`${baseUrl}/api/machines/status-change`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ machine_id: workOrder.machineId, new_status: 'maintenance' })
+        });
+      } catch (statusErr) {
+        console.error('[WO Create] Failed to auto-update machine status:', statusErr);
+      }
+    }
+    
     return NextResponse.json(workOrder, { status: 201 })
   } catch (error: any) {
     console.error('Error creating work order:', error)
@@ -137,9 +151,13 @@ export async function PUT(request: NextRequest) {
     if (rest.actualDuration) updateData.actualDuration = rest.actualDuration
     if (rest.scheduleDate) updateData.scheduleDate = rest.scheduleDate
 
+    const nextMaintenanceDate = body.next_maintenance;
+    const actualCompletedAt = new Date();
+
     // Auto-set completedAt when status changes to Completed
+    // actual_duration will be patched below after we resolve machine_status_log start time
     if (rest.status === 'Completed') {
-      updateData.completedAt = new Date()
+      updateData.completedAt = actualCompletedAt;
     }
 
     const workOrder = await prisma.workOrder.update({
@@ -207,20 +225,55 @@ export async function PUT(request: NextRequest) {
           }
         }
 
-        // Find current open Machine Status Log
+        // Find Machine Status Log for accurate duration
+        // Strategy: First try an open log (endTime: null). If none found (already closed by status-change),
+        // fall back to the most recently closed log for this machine to get the real start_time.
         let machineStatusLogId = null;
+        let machineLogStartTime: Date | null = null;
         if (workOrder.machineId) {
+          // 1st attempt: open log
           const openLog = await prisma.machineStatusLog.findFirst({
             where: { machineId: workOrder.machineId, endTime: null },
             orderBy: { startTime: 'desc' }
           });
-          if (openLog) machineStatusLogId = openLog.id;
+
+          if (openLog) {
+            machineStatusLogId = openLog.id;
+            machineLogStartTime = openLog.startTime;
+          } else {
+            // 2nd attempt: most recently CLOSED log (race condition: status-change already closed it)
+            const closedLog = await prisma.machineStatusLog.findFirst({
+              where: {
+                machineId: workOrder.machineId,
+                // Only consider logs whose endTime was set very recently (within last 5 minutes)
+                endTime: { gte: new Date(Date.now() - 5 * 60 * 1000) }
+              },
+              orderBy: { startTime: 'desc' }
+            });
+
+            if (closedLog) {
+              machineStatusLogId = closedLog.id;
+              machineLogStartTime = closedLog.startTime;
+            }
+          }
         }
 
-        // Add history record
-        let durationSeconds = 0;
-        if (workOrder.createdAt && workOrder.completedAt) {
-          durationSeconds = Math.floor((workOrder.completedAt.getTime() - workOrder.createdAt.getTime()) / 1000);
+        // Calculate accurate duration from machine_status_log.start_time to now
+        const eventEndTime = new Date(doneAt);
+        const eventStartTime = machineLogStartTime || workOrder.createdAt || eventEndTime;
+        const durationSeconds = Math.floor((eventEndTime.getTime() - new Date(eventStartTime).getTime()) / 1000);
+
+        // Persist the accurate duration back to the work_order row so the WO list can display it directly
+        // without re-computing from created_at (which is the WO generation time, not the event start time)
+        try {
+          await prisma.$executeRawUnsafe(
+            `UPDATE public.work_order SET actual_duration = $1 WHERE id = $2::uuid`,
+            durationSeconds.toString(),
+            workOrder.id
+          );
+          console.log('[WO Complete] actual_duration persisted:', durationSeconds, 'seconds for WO:', workOrder.id);
+        } catch (durErr) {
+          console.error('[WO Complete] Failed to persist actual_duration:', durErr);
         }
 
         const typeMap: Record<string, string> = {
@@ -229,6 +282,7 @@ export async function PUT(request: NextRequest) {
           'preventive': 'maintenance',
           'inspection': 'maintenance',
           'maintenance': 'maintenance',
+          'planned downtime': 'maintenance',
           'repair': 'repair',
           'on hold': 'on hold'
         };
@@ -244,7 +298,7 @@ export async function PUT(request: NextRequest) {
           machine_status_log_id: machineStatusLogId,
           technician_id: technicianId,
           event_type: eventType,
-          event_start: workOrder.createdAt ? workOrder.createdAt.toISOString() : doneAt,
+          event_start: (machineLogStartTime || workOrder.createdAt || new Date(doneAt)).toISOString(),
           event_end: doneAt,
           duration_seconds: durationSeconds,
           work_order_status: 'Completed',
@@ -272,28 +326,37 @@ export async function PUT(request: NextRequest) {
           console.log('[WO Complete] Work order history recorded successfully');
         }
 
-        // 3. Reactivate machine if the completed work order was for downtime, maintenance, or repair
-        if ((eventType === 'downtime' || eventType === 'maintenance' || eventType === 'repair') && workOrder.machineId) {
+        // 3. Reactivate machine and update maintenance dates
+        if (workOrder.machineId) {
           try {
-             // Let's directly construct the payload and fetch using nextUrl.origin to ensure NO IP/port mismatch issues
              const baseUrl = request.nextUrl.origin;
-             const statusChangeUrl = `${baseUrl}/api/machines/status-change`;
-             console.log('[WO Complete] Calling status-change endpoint:', statusChangeUrl);
              
-             const scRes = await fetch(statusChangeUrl, {
+             // Base reactivation to active
+             const reactivationPayload: any = { 
+               machine_id: workOrder.machineId, 
+               new_status: 'active' 
+             };
+             
+             await fetch(`${baseUrl}/api/machines/status-change`, {
                method: 'POST',
                headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify({ machine_id: workOrder.machineId, new_status: 'active' })
+               body: JSON.stringify(reactivationPayload)
              });
-             
-             const scData = await scRes.json();
-             if (!scRes.ok) {
-               console.error('[WO Complete] status-change error response:', scData);
-             } else {
-               console.log('[WO Complete] Machine status reverted to active for:', workOrder.machineId);
+
+             // Update maintenance dates in machine table
+               if (eventType === 'maintenance' || eventType === 'downtime' || eventType === 'repair') {
+                 console.log(`[WO Complete] Updating machine ${workOrder.machineId} dates. nextDate: ${nextMaintenanceDate}`);
+                 await prisma.machine.update({
+                   where: { id: workOrder.machineId },
+                   data: {
+                     lastMaintenance: actualCompletedAt,
+                     nextMaintenance: nextMaintenanceDate ? new Date(nextMaintenanceDate) : undefined
+                   }
+                 });
+               console.log('[WO Complete] Machine maintenance dates updated successfully');
              }
           } catch (statusErr) {
-            console.error('[WO Complete] Failed to update machine status:', statusErr);
+            console.error('[WO Complete] Failed to update machine state/dates:', statusErr);
           }
         }
 

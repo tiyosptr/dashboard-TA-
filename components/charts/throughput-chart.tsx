@@ -250,7 +250,7 @@ function ThroughputChart({ className = '', lineId, throughputData }: ThroughputC
                 <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 rounded-lg px-2 py-1 flex-1 border border-indigo-100 min-w-0">
                     <div className="text-[8px] text-slate-500 font-semibold uppercase tracking-wider">Rate</div>
                     <div className="text-xs font-black text-indigo-700 truncate">
-                        {lineId && hasData ? `${currentRate.toFixed(1)}/jam` : '—'}
+                        {lineId && hasData ? `${currentRate.toFixed(1)} unit/jam` : '—'}
                     </div>
                 </div>
                 <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-lg px-2 py-1 flex-1 border border-emerald-100 min-w-0">

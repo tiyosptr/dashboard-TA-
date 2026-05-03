@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import useSWR from 'swr';
-import { Search, Calendar, Clock, User, Download, Filter, Settings, AlertTriangle, FileText, CheckCircle } from 'lucide-react';
+import { Search, Calendar, Clock, User, Download, Filter, Settings, AlertTriangle, FileText, CheckCircle, History as HistoryIcon, Briefcase, Loader2, ChevronRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import BaseModal from '@/app/components/ui/BaseModal';
 
@@ -20,11 +20,14 @@ function formatDuration(seconds: number | null) {
 
 export default function MaintenanceHistory() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<'status-logs' | 'work-orders'>('status-logs');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterMachine, setFilterMachine] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedHistoryModal, setSelectedHistoryModal] = useState<any | null>(null);
+
+  const [filterLine, setFilterLine] = useState('all');
 
   // Build query string
   const params = new URLSearchParams();
@@ -33,300 +36,307 @@ export default function MaintenanceHistory() {
   if (dateRange.start) params.set('startDate', dateRange.start);
   if (dateRange.end) params.set('endDate', dateRange.end);
 
-  const { data: apiResponse, isLoading, isValidating } = useSWR(`/api/work-order-history?${params.toString()}`, fetcher, {
-    refreshInterval: 10000,
-    keepPreviousData: true,
-  });
+  const { data: woResponse, isLoading: woLoading } = useSWR(`/api/work-order-history?${params.toString()}`, fetcher);
+  const { data: logResponse, isLoading: logLoading } = useSWR(`/api/machines/history/status-logs?${params.toString()}`, fetcher);
+  const { data: linesResponse } = useSWR('/api/lines', fetcher);
   
-  const historyData = apiResponse?.success ? apiResponse.data : [];
+  const woHistory = woResponse?.success ? woResponse.data : [];
+  const logSummaries = logResponse?.success ? logResponse.machineSummaries : [];
+  const allLines = linesResponse?.success ? linesResponse.data : [];
 
-  const filteredHistory = (historyData || []).filter((item: any) => {
+  const filteredWo = (woHistory || []).filter((item: any) => {
     if (!searchTerm) return true;
     const searchLow = searchTerm.toLowerCase();
     const machineName = item.machine?.name_machine?.toLowerCase() || '';
     const woCode = item.work_order_code?.toLowerCase() || '';
     const desc = item.description?.toLowerCase() || '';
     return machineName.includes(searchLow) || woCode.includes(searchLow) || desc.includes(searchLow);
+  }).sort((a: any, b: any) => {
+    const dateA = a.event_start ? new Date(a.event_start).getTime() : 0;
+    const dateB = b.event_start ? new Date(b.event_start).getTime() : 0;
+    return dateB - dateA;
   });
 
-  const totalDurationSeconds = filteredHistory.reduce((sum: number, item: any) => sum + (Number(item.duration_seconds) || 0), 0);
-  const totalDurationHours = totalDurationSeconds / 3600;
+  const filteredSummaries = (logSummaries || []).filter((item: any) => {
+    const line = item.line_name || 'Unassigned';
+    if (filterLine !== 'all' && line !== filterLine) return false;
 
-  const exportToCSV = () => {
-    if (!filteredHistory.length) return;
-    const headers = ['Date', 'Machine', 'Type', 'Work Order', 'Technician', 'Duration (seconds)', 'Description', 'Action Taken'];
-    const rows = filteredHistory.map((item: any) => [
-      new Date(item.event_start).toISOString(),
-      item.machine?.name_machine || 'Unknown',
-      item.event_type,
-      item.work_order_code || '',
-      item.technician?.name || '',
-      item.duration_seconds || 0,
-      `"${(item.description || '').replace(/"/g, '""')}"`,
-      `"${(item.action_taken || '').replace(/"/g, '""')}"`
-    ]);
-    const csvContent = [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `maintenance_history_${new Date().toISOString().slice(0,10)}.csv`;
-    link.click();
-  };
+    if (!searchTerm) return true;
+    const searchLow = searchTerm.toLowerCase();
+    const machineName = item.name_machine?.toLowerCase() || '';
+    return machineName.includes(searchLow);
+  });
 
   const getTypeColor = (type: string) => {
     switch (type.toLowerCase()) {
-      case 'maintenance': return 'bg-blue-100 text-blue-700';
-      case 'downtime': return 'bg-rose-100 text-rose-700';
-      case 'on hold': return 'bg-amber-100 text-amber-700';
-      case 'repair': return 'bg-purple-100 text-purple-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'maintenance': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'downtime': return 'bg-rose-100 text-rose-700 border-rose-200';
+      case 'on hold': return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'inactive': return 'bg-slate-100 text-slate-700 border-slate-200';
+      case 'repair': return 'bg-purple-100 text-purple-700 border-purple-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
 
+  const getStatusIcon = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'maintenance': return <Settings size={14} className="text-blue-500" />;
+      case 'downtime': return <AlertTriangle size={14} className="text-rose-500" />;
+      case 'on hold': return <Clock size={14} className="text-amber-500" />;
+      case 'inactive': return <CheckCircle size={14} className="text-slate-500" />;
+      default: return <Clock size={14} className="text-gray-500" />;
+    }
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Machine History</h2>
-          <p className="text-xs text-gray-500">Record of all maintenance, downtime, and repair events</p>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <HistoryIcon className="text-indigo-600" size={24} />
+            Historical Archives
+          </h2>
+          <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest mt-1">Audit log of all machine events and maintenance tasks</p>
         </div>
-        <button
-          onClick={exportToCSV}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
-        >
-          <Download size={16} />
-          Export CSV
-        </button>
-      </div>
-
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white border border-gray-200 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-gray-600">Total Events</span>
-            <FileText className="text-blue-600" size={16} />
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{filteredHistory.length}</p>
-          <p className="text-xs text-gray-500 mt-0.5">recorded events</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-gray-600">Total Duration</span>
-            <Clock className="text-orange-600" size={16} />
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{totalDurationHours.toFixed(1)}h</p>
-          <p className="text-xs text-gray-500 mt-0.5">total event time</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-lg p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-gray-600">Avg. Duration</span>
-            <Clock className="text-purple-600" size={16} />
-          </div>
-          <p className="text-2xl font-bold text-gray-900">
-            {filteredHistory.length > 0 ? (totalDurationHours / filteredHistory.length).toFixed(1) : 0}h
-          </p>
-          <p className="text-xs text-gray-500 mt-0.5">per event</p>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-lg p-3">
-           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-gray-600">Downtimes</span>
-            <AlertTriangle className="text-rose-600" size={16} />
-          </div>
-          <p className="text-2xl font-bold text-gray-900">
-            {filteredHistory.filter((i: any) => i.event_type === 'downtime').length}
-          </p>
-          <p className="text-xs text-gray-500 mt-0.5">recorded downtimes</p>
+        
+        {/* Tab Selection */}
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <button
+            onClick={() => setActiveTab('status-logs')}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+              activeTab === 'status-logs' 
+                ? 'bg-white text-indigo-600 shadow-sm' 
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Clock size={14} />
+            Machine Logs
+          </button>
+          <button
+            onClick={() => setActiveTab('work-orders')}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
+              activeTab === 'work-orders' 
+                ? 'bg-white text-indigo-600 shadow-sm' 
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Briefcase size={14} />
+            Work Orders
+          </button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm p-3 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="bg-white rounded-2xl shadow-sm p-4 border border-slate-100 flex flex-wrap gap-4 items-center">
+        <div className="relative flex-1 min-w-[240px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder={`Search ${activeTab === 'status-logs' ? 'machine logs' : 'work orders'}...`}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all font-medium"
+          />
+        </div>
+
+        {activeTab === 'status-logs' && (
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-            <input
-              type="text"
-              placeholder="Search history..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <select
+              value={filterLine}
+              onChange={(e) => setFilterLine(e.target.value)}
+              className="pl-9 pr-8 py-2 text-xs font-bold border border-slate-200 rounded-xl appearance-none bg-white focus:outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 text-slate-600"
+            >
+              <option value="all">All Lines</option>
+              {allLines.map((line: any) => (
+                <option key={line.id} value={line.name}>{line.name}</option>
+              ))}
+            </select>
           </div>
+        )}
 
-          <select
-             // Using simple text input or mock selections since actual machine lists require an extra fetch. 
-            // In a full app, we would fetch machine list and populate this.
-            value={filterMachine}
-            onChange={(e) => setFilterMachine(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Machines</option>
-            {/* If we had machine list, we'd map it here. For now it triggers "all" by default. User can rely on search string to filter machine names. */}
-          </select>
-
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Types</option>
-            <option value="maintenance">Maintenance</option>
-            <option value="downtime">Downtime</option>
-            <option value="repair">Repair</option>
-            <option value="on hold">On Hold</option>
-          </select>
-
-          <div className="flex gap-2">
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+        <div className="flex gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
+          <input
+            type="date"
+            value={dateRange.start}
+            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+            className="px-3 py-1.5 text-[11px] font-bold bg-transparent border-none focus:ring-0 outline-none text-slate-600"
+          />
+          <span className="text-slate-300 self-center">|</span>
+          <input
+            type="date"
+            value={dateRange.end}
+            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+            className="px-3 py-1.5 text-[11px] font-bold bg-transparent border-none focus:ring-0 outline-none text-slate-600"
+          />
         </div>
       </div>
 
-      {/* History Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto min-h-[300px]">
-          {isLoading && historyData.length === 0 ? (
-            <div className="flex items-center justify-center py-24 w-full bg-white rounded-3xl shadow-sm border border-slate-100">
-              <div className="flex flex-col items-center gap-4">
-                <div className="relative">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center animate-pulse">
-                    <FileText size={28} className="text-white" />
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-400 border-[3px] border-white animate-bounce" />
-                </div>
-                <p className="text-slate-500 font-bold tracking-wide">Menelusuri Riwayat Pemeliharaan...</p>
+      {/* Tab Content */}
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {activeTab === 'status-logs' ? (
+          <div className="space-y-8">
+            {logLoading ? (
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 {Array.from({ length: 6 }).map((_, i) => (
+                   <div key={i} className="bg-slate-50 h-32 rounded-2xl animate-pulse border border-slate-100" />
+                 ))}
+               </div>
+            ) : filteredSummaries.length === 0 ? (
+              <div className="py-20 text-center bg-white rounded-2xl border-2 border-dashed border-slate-100">
+                <Clock size={48} className="mx-auto text-slate-200 mb-4" />
+                <p className="text-slate-400 font-bold">No machine history found</p>
               </div>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date & Time</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Machine</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Event Type</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Work Order</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Description & Action</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Technician</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Duration</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredHistory.map((item: any) => (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-xs font-medium text-gray-900">
-                          {new Date(item.event_start).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </span>
-                        <span className="text-[10px] text-gray-500">
-                          {new Date(item.event_start).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                          {item.event_end && ` - ${new Date(item.event_end).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <Settings size={12} className="text-slate-400" />
-                        <span className="text-xs font-semibold text-gray-900">{item.machine?.name_machine || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${getTypeColor(item.event_type)}`}>
-                        {item.event_type}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {item.work_order_code ? (
-                        <div className="flex flex-col gap-0.5">
+            ) : (
+              Object.entries(
+                filteredSummaries.reduce((acc: any, log: any) => {
+                  const line = log.line_name || 'Unassigned';
+                  if (!acc[line]) acc[line] = [];
+                  acc[line].push(log);
+                  return acc;
+                }, {})
+              )
+              .sort(([lineA], [lineB]) => lineA.localeCompare(lineB))
+              .map(([lineName, summaries]: [string, any]) => (
+                <div key={lineName} className="space-y-4">
+                  <div className="flex items-center gap-3 px-2">
+                    <div className="h-px flex-1 bg-slate-100" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
+                      Line: {lineName}
+                    </span>
+                    <div className="h-px flex-1 bg-slate-100" />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {summaries
+                      .sort((a: any, b: any) => (a.process_order || 0) - (b.process_order || 0))
+                      .map((agg: any) => (
+                        <div 
+                          key={agg.machine_id} 
+                          onClick={() => router.push(`/management-system/history/machine/${agg.machine_id}`)}
+                          className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl hover:border-indigo-200 hover:-translate-y-1 transition-all group cursor-pointer relative overflow-hidden"
+                        >
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-50/50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-150 duration-500" />
+                          
+                          <div className="relative flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100 group-hover:bg-indigo-600 transition-colors">
+                                <Settings size={20} className="text-slate-400 group-hover:text-white transition-colors" />
+                              </div>
+                              <div>
+                                <h3 className="font-black text-slate-900 text-sm tracking-tight">{agg.name_machine}</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{agg.process_name || 'Process'}</p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="relative grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-50">
+                             <div className="flex items-center justify-between p-2 rounded-lg bg-blue-50/50 border border-blue-100/50">
+                               <span className="text-[9px] font-black text-blue-600 uppercase">Maint.</span>
+                               <span className="text-xs font-black text-blue-700">{agg.maintenanceCount}</span>
+                             </div>
+                             <div className="flex items-center justify-between p-2 rounded-lg bg-rose-50/50 border border-rose-100/50">
+                               <span className="text-[9px] font-black text-rose-600 uppercase">Down.</span>
+                               <span className="text-xs font-black text-rose-700">{agg.downtimeCount}</span>
+                             </div>
+                             <div className="flex items-center justify-between p-2 rounded-lg bg-amber-50/50 border border-amber-100/50">
+                               <span className="text-[9px] font-black text-amber-600 uppercase">Hold</span>
+                               <span className="text-xs font-black text-amber-700">{agg.onHoldCount}</span>
+                             </div>
+                             <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50/50 border border-slate-100/50">
+                               <span className="text-[9px] font-black text-slate-600 uppercase">Inact.</span>
+                               <span className="text-xs font-black text-slate-700">{agg.inactiveCount}</span>
+                             </div>
+                          </div>
+
+                          <div className="relative flex justify-end items-center mt-4 text-[10px] font-bold text-slate-400 group-hover:text-indigo-600 transition-colors">
+                             View Complete Logs <ChevronRight size={12} className="ml-1" />
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          /* Work Order Table (Previous Implementation) */
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="overflow-x-auto min-h-[400px]">
+              {woLoading ? (
+                 <div className="flex items-center justify-center py-40">
+                   <Loader2 size={32} className="animate-spin text-indigo-600" />
+                 </div>
+              ) : filteredWo.length === 0 ? (
+                <div className="text-center py-20">
+                  <Briefcase size={48} className="mx-auto text-slate-100 mb-4" />
+                  <p className="text-slate-400 font-bold">No work order history found</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="px-5 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Date & Time</th>
+                      <th className="px-5 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Machine</th>
+                      <th className="px-5 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Event Type</th>
+                      <th className="px-5 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Work Order</th>
+                      <th className="px-5 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Description</th>
+                      <th className="px-5 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Technician</th>
+                      <th className="px-5 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest">Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {filteredWo.map((item: any) => (
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-bold text-slate-900">
+                              {new Date(item.event_start).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {new Date(item.event_start).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <span className="text-xs font-bold text-slate-700">{item.machine?.name_machine || '-'}</span>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider border ${getTypeColor(item.event_type)}`}>
+                            {item.event_type}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
                           <span 
-                            className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
+                            className="text-xs font-black text-indigo-600 hover:text-indigo-700 cursor-pointer underline underline-offset-4 decoration-indigo-200"
                             onClick={() => setSelectedHistoryModal(item)}
                           >
-                            {item.work_order_code}
+                            {item.work_order_code || '-'}
                           </span>
-                          {item.priority && (
-                            <span className="text-[9px] text-gray-500 uppercase">{item.priority} priority</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <div className="text-xs text-gray-900 max-w-sm font-medium">
-                        {item.description || <span className="text-gray-400 italic font-normal">No description</span>}
-                      </div>
-                      
-                      {/* Show Task Summary if available */}
-                      {item.task && Array.isArray(item.task) && item.task.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {item.task.slice(0, 2).map((t: any, i: number) => (
-                            <span key={i} className="text-[9px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200 truncate max-w-[150px]">
-                              {typeof t === 'string' ? t : t.description}
-                            </span>
-                          ))}
-                          {item.task.length > 2 && (
-                            <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 font-bold">
-                              +{item.task.length - 2} more
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {item.action_taken && !item.task && (
-                        <div className="text-[10px] text-green-700 mt-1 flex gap-1 items-start bg-green-50 p-1.5 rounded border border-green-100 w-fit">
-                          <CheckCircle size={12} className="flex-shrink-0 mt-0.5" />
-                          <span>{item.action_taken}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <User size={12} className="text-gray-400" />
-                        <span className="text-xs text-gray-700">{item.technician?.name || '-'}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <Clock size={12} className="text-gray-400" />
-                        <span className="text-xs font-medium text-gray-900">
-                           {formatDuration(item.duration_seconds)}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {!isLoading && filteredHistory.length === 0 && historyData.length > 0 && (
-          <div className="text-center py-12 text-gray-500 border-t border-gray-100">
-            <Filter size={48} className="mx-auto mb-4 opacity-30 text-slate-400" />
-            <p className="font-medium text-sm text-slate-600">No history found</p>
-            <p className="text-xs text-slate-400 mt-1">Adjust your filters to see more results.</p>
-          </div>
-        )}
-        {!isLoading && historyData.length === 0 && (
-          <div className="text-center py-12 text-gray-500 border-t border-gray-100">
-             <FileText size={48} className="mx-auto mb-4 opacity-30 text-slate-400" />
-             <p className="font-medium text-sm text-slate-600">Jejak Histori Kosong / Belum Ada</p>
+                        </td>
+                        <td className="px-5 py-4">
+                          <p className="text-xs text-slate-600 line-clamp-1 max-w-[200px] font-medium">{item.description || '-'}</p>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black border border-indigo-100">
+                              {(item.technician?.name || '?').substring(0, 1)}
+                            </div>
+                            <span className="text-xs font-bold text-slate-700">{item.technician?.name || '-'}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap text-right">
+                          <span className="text-[11px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100">
+                            {formatDuration(item.duration_seconds || (item.event_start && item.event_end ? Math.floor((new Date(item.event_end).getTime() - new Date(item.event_start).getTime()) / 1000) : null))}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -371,7 +381,7 @@ export default function MaintenanceHistory() {
             </div>
             <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
               <p className="text-xs text-gray-500 uppercase tracking-wider mb-1 font-semibold">Duration</p>
-              <p className="font-bold text-gray-900">{formatDuration(selectedHistoryModal?.duration_seconds)}</p>
+              <p className="font-bold text-gray-900">{formatDuration(selectedHistoryModal?.duration_seconds || (selectedHistoryModal?.event_start && selectedHistoryModal?.event_end ? Math.floor((new Date(selectedHistoryModal.event_end).getTime() - new Date(selectedHistoryModal.event_start).getTime()) / 1000) : null))}</p>
             </div>
           </div>
 
@@ -403,10 +413,67 @@ export default function MaintenanceHistory() {
 
           {selectedHistoryModal?.task && Array.isArray(selectedHistoryModal.task) && selectedHistoryModal.task.length > 0 && (
             <div>
-              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
-                <CheckCircle size={16} className="text-indigo-600" />
-                Actions Performed
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                  <CheckCircle size={16} className="text-indigo-600" />
+                  Actions Performed
+                </p>
+                <button
+                  onClick={() => {
+                    const printContent = `
+                      <html>
+                        <head>
+                          <title>Work Order Tasks - ${selectedHistoryModal.work_order_code || 'N/A'}</title>
+                          <style>
+                            body { font-family: system-ui, -apple-system, sans-serif; padding: 40px; color: #333; }
+                            h2 { margin-bottom: 5px; color: #111; }
+                            .header { margin-bottom: 30px; border-bottom: 2px solid #e5e7eb; padding-bottom: 20px; }
+                            .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; color: #555; }
+                            .task-list { list-style: none; padding: 0; }
+                            .task-item { padding: 12px 16px; margin-bottom: 8px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; display: flex; align-items: center; }
+                            .task-num { font-weight: bold; margin-right: 16px; background: #e0e7ff; color: #4f46e5; border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+                          </style>
+                        </head>
+                        <body>
+                          <div class="header">
+                            <h2>Work Order Report</h2>
+                            <div class="meta">
+                              <div><strong>Work Order Code:</strong> ${selectedHistoryModal.work_order_code || 'N/A'}</div>
+                              <div><strong>Machine:</strong> ${selectedHistoryModal.machine?.name_machine || 'N/A'}</div>
+                              <div><strong>Date:</strong> ${selectedHistoryModal.event_start ? new Date(selectedHistoryModal.event_start).toLocaleString('id-ID') : 'N/A'}</div>
+                              <div><strong>Technician:</strong> ${selectedHistoryModal.technician?.name || selectedHistoryModal.assigned_to || 'N/A'}</div>
+                              <div><strong>Duration:</strong> ${(() => {
+                                const dur = selectedHistoryModal.duration_seconds || (selectedHistoryModal.event_start && selectedHistoryModal.event_end ? Math.floor((new Date(selectedHistoryModal.event_end).getTime() - new Date(selectedHistoryModal.event_start).getTime()) / 1000) : 0);
+                                return dur ? Math.floor(dur / 60) + 'm ' + (dur % 60) + 's' : '-';
+                              })()}</div>
+                            </div>
+                          </div>
+                          <h3>Actions Performed</h3>
+                          <ul class="task-list">
+                            ${selectedHistoryModal.task.map((t: any, i: number) => `
+                              <li class="task-item">
+                                <span class="task-num">${i + 1}</span>
+                                <span>${typeof t === 'string' ? t : (t.description || '')}</span>
+                              </li>
+                            `).join('')}
+                          </ul>
+                        </body>
+                      </html>
+                    `;
+                    const printWindow = window.open('', '', 'width=800,height=800');
+                    if (printWindow) {
+                      printWindow.document.write(printContent);
+                      printWindow.document.close();
+                      printWindow.focus();
+                      setTimeout(() => printWindow.print(), 250);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg border border-indigo-200 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                  Print Tasks
+                </button>
+              </div>
               <div className="space-y-2">
                 {selectedHistoryModal.task.map((t: any, i: number) => (
                   <div key={i} className="flex items-center gap-3 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl group hover:bg-white hover:shadow-md transition-all">

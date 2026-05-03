@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { X, Plus, Trash2 } from 'lucide-react';
 
+import { toast } from 'react-hot-toast';
+
 interface WorkOrderFormProps {
   onClose: () => void;
 }
@@ -26,6 +28,7 @@ export default function WorkOrderForm({ onClose }: WorkOrderFormProps) {
     e.preventDefault();
     // Handle form submission
     console.log('Form submitted:', formData, tasks, parts);
+    toast.success('Work Order berhasil dibuat!');
     onClose();
   };
 

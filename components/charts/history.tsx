@@ -23,16 +23,16 @@ interface HistoryChartProps {
     onRefresh?: () => void;
 }
 
-function HistoryChart({ 
-    width = '100%', 
-    height = '100%', 
+function HistoryChart({
+    width = '100%',
+    height = '100%',
     className = '',
     lineId,
     historyData,
     isLoading = false,
     onRefresh
 }: HistoryChartProps) {
-    
+
     console.log('[History Component] Received data:', historyData);
 
     // Handle loading state
@@ -92,7 +92,7 @@ function HistoryChart({
     // Get date range for display
     const firstDate = historyData[0]?.date;
     const lastDate = historyData[historyData.length - 1]?.date;
-    const dateRangeText = firstDate && lastDate 
+    const dateRangeText = firstDate && lastDate
         ? `${new Date(firstDate + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} - ${new Date(lastDate + 'T00:00:00').toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}`
         : 'Last 7 Days';
 
@@ -112,6 +112,7 @@ function HistoryChart({
                 pointBorderWidth: 2,
                 pointHoverRadius: 6,
                 fill: true,
+                yAxisID: 'y',
             },
             {
                 label: 'Downtime',
@@ -125,6 +126,7 @@ function HistoryChart({
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
                 pointHoverRadius: 6,
+                yAxisID: 'y',
             },
             {
                 label: 'Reject',
@@ -138,6 +140,7 @@ function HistoryChart({
                 pointBorderColor: '#fff',
                 pointBorderWidth: 2,
                 pointHoverRadius: 6,
+                yAxisID: 'y1',
             },
         ],
     };
@@ -176,7 +179,7 @@ function HistoryChart({
                 titleFont: { size: 11, weight: 'bold' as const },
                 bodyFont: { size: 11 },
                 callbacks: {
-                    label: function(context: any) {
+                    label: function (context: any) {
                         let label = context.dataset.label || '';
                         if (label) {
                             label += ': ';
@@ -203,9 +206,34 @@ function HistoryChart({
                 ticks: { font: { size: 10 }, color: '#94a3b8' },
             },
             y: {
+                type: 'linear' as const,
+                display: true,
+                position: 'left' as const,
+                title: {
+                    display: true,
+                    text: 'Minutes',
+                    font: { size: 9, weight: 'bold' as any },
+                    color: '#6366f1'
+                },
                 grid: { color: 'rgba(226, 232, 240, 0.5)' },
                 border: { display: false },
                 ticks: { font: { size: 10 }, color: '#94a3b8' },
+                min: 0,
+            },
+            y1: {
+                type: 'linear' as const,
+                display: true,
+                position: 'right' as const,
+                title: {
+                    display: true,
+                    text: 'Reject Count',
+                    font: { size: 9, weight: 'bold' as any },
+                    color: '#f43f5e'
+                },
+                grid: { display: false },
+                border: { display: false },
+                ticks: { font: { size: 10 }, color: '#94a3b8' },
+                min: 0,
             },
         },
     };

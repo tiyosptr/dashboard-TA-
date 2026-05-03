@@ -3,7 +3,36 @@
 
 import { Clock, User, GripVertical, CheckCircle2, Circle } from 'lucide-react';
 import { WorkOrder, WorkOrderStatus } from '@/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+function LiveWODuration({ startTime, status }: { startTime: string; status: string }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (status !== 'On-Solving') return;
+    const start = new Date(startTime).getTime();
+    const update = () => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startTime, status]);
+
+  if (status !== 'On-Solving') return null;
+
+  const hours = Math.floor(elapsed / 3600);
+  const minutes = Math.floor((elapsed % 3600) / 60);
+  const secs = elapsed % 60;
+  const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+  return (
+    <div className="flex items-center gap-1 mt-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 animate-pulse w-fit">
+      <Clock size={10} />
+      {timeString}
+    </div>
+  );
+}
 
 interface WorkOrderKanbanProps {
   workOrders: WorkOrder[];
@@ -71,11 +100,21 @@ export default function WorkOrderKanban({
   };
 
   const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'Preventive': return 'bg-green-100 text-green-700 border-green-300';
-      case 'Corrective': return 'bg-orange-100 text-orange-700 border-orange-300';
-      case 'Inspection': return 'bg-blue-100 text-blue-700 border-blue-300';
-      default: return 'bg-gray-100 text-gray-700 border-gray-300';
+    const t = type?.toLowerCase();
+    switch (t) {
+      case 'maintenance':
+      case 'preventive':
+      case 'inspection':
+        return 'bg-blue-100 text-blue-700 border-blue-300';
+      case 'corrective':
+      case 'repair':
+      case 'downtime':
+        return 'bg-rose-100 text-rose-700 border-rose-300';
+      case 'on hold':
+      case 'on-hold':
+        return 'bg-amber-100 text-amber-700 border-amber-300';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-300';
     }
   };
 
@@ -179,6 +218,9 @@ export default function WorkOrderKanban({
                       <Clock size={14} className="text-gray-400" />
                       <span>{new Date(wo.schedule_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</span>
                     </div>
+                    {wo.status === 'On-Solving' && (
+                      <LiveWODuration startTime={wo.created_at || (wo as any).createdAt} status={wo.status} />
+                    )}
                   </div>
 
                   {/* Task Progress */}

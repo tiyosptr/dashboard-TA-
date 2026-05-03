@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Settings, Calendar, Play, AlertTriangle, User, FileText, ChevronRight, Briefcase, Clock, Search, Check } from 'lucide-react';
+import { Settings, Calendar, Play, AlertTriangle, User, FileText, ChevronRight, Search } from 'lucide-react';
 import BaseModal from '@/app/components/ui/BaseModal';
 import useSWR, { mutate as swrMutate } from 'swr';
 import { motion, AnimatePresence } from 'motion/react';
+import { toast } from 'react-hot-toast';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -28,14 +29,13 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
     machineId: schedule?.id || schedule?.machineId || '',
     scheduleType: schedule?.scheduleType || 'Time-based',
     nextMaintenance: schedule?.next_maintenance ? new Date(schedule.next_maintenance).toISOString().split('T')[0] : '',
-    intervalValue: '',
-    intervalType: 'hours',
+
     // Work Order fields
     woPriority: 'Medium',
-    woDescription: `Preventive maintenance for ${schedule?.name_machine}`,
+    woDescription: `Maintenance for ${schedule?.name_machine}`,
     woAssignedTo: '', // Store name
     // Machine status
-    machineStatus: schedule?.status || 'active'
+    machineStatus: (schedule?.status || 'active').toLowerCase()
   });
 
   const filteredTechnicians = technicians.filter((t: any) => 
@@ -64,11 +64,6 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.error || 'Failed to update schedule');
         }
-        // Revalidate both schedule and machine list data
-        await swrMutate('/api/maintenance/scheduled');
-        await swrMutate((key: any) => typeof key === 'string' && key.startsWith('/api/machines'), undefined, { revalidate: true });
-        // Notify non-SWR components (e.g. MachineList) to refresh
-        window.dispatchEvent(new CustomEvent('machine-data-updated'));
       } else if (activeTab === 'work-order') {
         // 1. Update machine status first
         const statusRes = await fetch('/api/machines/status-change', {
@@ -76,7 +71,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             machine_id: formData.machineId, 
-            new_status: formData.machineStatus 
+            new_status: formData.machineStatus.toLowerCase() 
           })
         });
         if (!statusRes.ok) {
@@ -90,7 +85,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
           machineName: schedule?.name_machine || schedule?.machineName,
           lineId: schedule?.line_id || schedule?.lineId,
           nameLine: schedule?.line_name || schedule?.nameLine,
-          type: 'Preventive',
+          type: 'Maintenance',
           priority: formData.woPriority,
           assignedTo: formData.woAssignedTo,
           description: formData.woDescription || `Technician ${formData.woAssignedTo} assigned for ${formData.machineStatus}`,
@@ -113,13 +108,33 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
         }
       }
       
+      // Global revalidation for all machine-related data
+      await swrMutate('/api/maintenance/scheduled');
+      await swrMutate((key: any) => typeof key === 'string' && key.startsWith('/api/machines'), undefined, { revalidate: true });
+      
+      // Notify non-SWR components (e.g. MachineList) to refresh
+      window.dispatchEvent(new CustomEvent('machine-data-updated'));
+      
+      if (activeTab === 'schedule') {
+        toast.success('Maintenance schedule updated');
+      } else {
+        toast.success('Work order generated & status updated');
+      }
+      
       onSuccess?.();
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      toast.error('Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleTabChange = (tabId: 'schedule' | 'work-order') => {
+    setActiveTab(tabId);
+    if (tabId === 'work-order' && formData.machineStatus !== 'maintenance') {
+      setFormData(prev => ({ ...prev, machineStatus: 'maintenance' }));
     }
   };
 
@@ -160,7 +175,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => handleTabChange(tab.id as any)}
               className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold transition-all border-r last:border-r-0 ${
                 activeTab === tab.id 
                   ? 'bg-white text-indigo-600 shadow-sm' 
@@ -190,31 +205,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
                     />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Auto-Interval</label>
-                  <div className="relative group">
-                     <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                    <input
-                      type="number"
-                      placeholder="750"
-                      value={formData.intervalValue}
-                      onChange={(e) => setFormData({...formData, intervalValue: e.target.value})}
-                      className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white outline-none font-bold text-slate-700 transition-all shadow-sm"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Unit</label>
-                  <select
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 focus:bg-white outline-none font-bold text-slate-700 transition-all shadow-sm appearance-none"
-                    value={formData.intervalType}
-                    onChange={(e) => setFormData({...formData, intervalType: e.target.value})}
-                  >
-                    <option value="hours">Hours</option>
-                    <option value="days">Days</option>
-                    <option value="cycles">Cycles</option>
-                  </select>
-                </div>
+
               </div>
               <div className="p-4 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl border border-indigo-100 shadow-sm">
                 <div className="flex gap-3">
@@ -222,7 +213,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
                     <AlertTriangle size={16} />
                   </div>
                   <p className="text-[11px] text-indigo-800 font-bold leading-relaxed">
-                    Automated scheduling ensures preventive maintenance is performed before failures occur, maximizing equipment OEE and reducing unplanned downtime.
+                    Automated scheduling ensures maintenance is performed before failures occur, maximizing equipment OEE and reducing unplanned downtime.
                   </p>
                 </div>
               </div>

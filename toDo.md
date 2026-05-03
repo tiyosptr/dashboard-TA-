@@ -23,4 +23,5 @@ lalu untuk pengambilan data masih lama apalagi ketika klik machine detail itu da
 
 
 
+
 Notes: Gunakan pengambilan data yang sudah ada pada standard industri agar pengambilan datanya cepat contoh SWR untuk initial load dan jika ada update/insert data terbaru menggunakan websocket.

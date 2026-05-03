@@ -9,6 +9,33 @@ export async function GET(request: NextRequest) {
     const lineId = searchParams.get('lineId')
 
     if (lineId) {
+      // 4. Fetch additional stats (open logs, cycle time, throughput)
+      const { data: openLogs, error: logsError } = await supabaseAdmin
+          .from('machine_status_log')
+          .select('machine_id, status, start_time')
+          .is('end_time', null)
+
+      if (logsError) console.error('Error fetching open logs:', logsError)
+
+      const liveDurationMap = new Map<string, { activeAdd: number, downtimeAdd: number }>()
+      const nowMs = Date.now()
+      if (openLogs) {
+          openLogs.forEach((log: any) => {
+              const startMs = new Date(log.start_time).getTime()
+              if (isNaN(startMs)) return;
+              
+              const diffHours = Math.max(0, (nowMs - startMs) / (1000 * 3600))
+              
+              if (!liveDurationMap.has(log.machine_id)) {
+                  liveDurationMap.set(log.machine_id, { activeAdd: 0, downtimeAdd: 0 })
+              }
+              const stats = liveDurationMap.get(log.machine_id)!
+              const s = log.status?.toLowerCase().trim() || ''
+              if (s === 'active' || s === 'running') stats.activeAdd += diffHours
+              else if (['downtime', 'down', 'error'].includes(s)) stats.downtimeAdd += diffHours
+          })
+      }
+
       // When lineId is provided, get machines through relationship chain
       const { data: lineProcesses, error } = await supabaseAdmin
         .from('line_process')
@@ -112,7 +139,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(machine, { status: 201 })
+    // CREATE INITIAL STATUS LOG so runtime/downtime starts counting immediately
+    if (machine.id) {
+      const { error: logError } = await supabaseAdmin
+        .from('machine_status_log')
+        .insert({
+          machine_id: machine.id,
+          status: machine.status || 'inactive',
+          start_time: new Date().toISOString() // Or use a DB function if preferred, but ISO string is fine
+        })
+
+      if (logError) {
+        console.error('Error creating initial status log:', logError)
+      }
+    }
+
+    return NextResponse.json({ success: true, data: machine }, { status: 201 })
   } catch (error) {
     console.error('Error creating machine:', error)
     return NextResponse.json({ error: 'Failed to create machine' }, { status: 500 })

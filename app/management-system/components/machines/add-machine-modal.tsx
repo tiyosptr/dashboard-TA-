@@ -20,6 +20,8 @@ interface AddMachineModalProps {
     onSuccess: () => void;
 }
 
+import { toast } from 'react-hot-toast';
+
 export function AddMachineModal({ isOpen, onClose, lines, onSuccess }: AddMachineModalProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [machineName, setMachineName] = useState('');
@@ -109,10 +111,12 @@ export function AddMachineModal({ isOpen, onClose, lines, onSuccess }: AddMachin
                 throw new Error(json.error || 'Gagal menambahkan mesin');
             }
 
+            toast.success('Mesin berhasil ditambahkan!');
             onSuccess();
             onClose();
         } catch (err: any) {
             setError(err.message || 'Terjadi kesalahan sistem');
+            toast.error(err.message || 'Gagal menambahkan mesin');
         } finally {
             setIsSubmitting(false);
         }

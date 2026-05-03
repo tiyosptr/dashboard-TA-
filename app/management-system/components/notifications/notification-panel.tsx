@@ -19,6 +19,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/supabase';
 import { Notification, Technician } from '@/types';
+import { toast } from 'react-hot-toast';
 
 interface TechnicianModalProps {
   isOpen: boolean;
@@ -306,11 +307,11 @@ export default function NotificationsPage() {
 
       // Show confirmation
       if (notification) {
-        alert(`✅ Notification acknowledged for ${notification.machine_name}`);
+        toast.success(`Notification acknowledged for ${notification.machine_name}`);
       }
     } catch (error) {
       console.error('Error acknowledging:', error);
-      alert('❌ Failed to acknowledge notification');
+      toast.error('Failed to acknowledge notification');
     }
   };
 
@@ -355,12 +356,13 @@ export default function NotificationsPage() {
       setShowTechnicianModal(false);
       setSelectedNotificationId(null);
 
-      alert(
-        `✅ Work Order Generated!\n\nCode: ${result.data.work_order_code}\nAssigned to: ${technicianName}\nLine: ${result.data.name_line || 'N/A'}\n\nThe work order is now available in the Work Orders tab.`
+      toast.success(
+        `Work Order Generated! Code: ${result.data.work_order_code}`, 
+        { duration: 4000 }
       );
     } catch (error: any) {
       console.error('Error generating work order:', error);
-      alert(`❌ Error: ${error.message}`);
+      toast.error(`Error: ${error.message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -392,17 +394,18 @@ export default function NotificationsPage() {
   };
 
   const deleteNotification = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this notification?')) return;
+    if (!window.confirm('Are you sure you want to delete this notification?')) return;
 
     try {
       const { error } = await supabase.from('notification').delete().eq('id', id);
 
       if (error) throw error;
 
+      toast.success('Notification deleted');
       loadNotifications(false);
     } catch (error) {
       console.error('Error deleting notification:', error);
-      alert('❌ Failed to delete notification');
+      toast.error('Failed to delete notification');
     }
   };
 

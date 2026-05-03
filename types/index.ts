@@ -44,6 +44,7 @@ export interface MachineData {
   real_pass?: number;
   real_reject?: number;
   real_defect_rate?: number;
+  is_placeholder?: boolean;
 }
 
 export interface HistoryData {

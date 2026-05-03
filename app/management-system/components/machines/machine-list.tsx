@@ -146,37 +146,65 @@ function getStatusConfig(status: string) {
 }
 
 function MachineCard({ machine, onClick }: { machine: MachineData; onClick: (m: MachineData) => void }) {
-  const config = getStatusConfig(machine.status);
+  const config = getStatusConfig(machine.status || 'inactive');
+
+  if (machine.is_placeholder) {
+    return (
+      <div className="group relative bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200 p-6 flex flex-col items-center justify-center text-center h-full min-h-[320px] transition-all duration-300 hover:border-indigo-300 hover:bg-slate-50">
+        <div className="w-14 h-14 rounded-full bg-white shadow-sm flex items-center justify-center mb-4 border border-slate-100 group-hover:scale-110 transition-transform">
+          <PowerOff size={24} className="text-slate-300 group-hover:text-indigo-400 transition-colors" />
+        </div>
+        <div className="mb-2">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-bold uppercase tracking-wider mb-2">
+            Empty Process
+          </span>
+          <h3 className="font-bold text-base text-slate-900 tracking-tight">{machine.process_name || 'Unknown Process'}</h3>
+        </div>
+        <div className="mt-2 p-3 bg-rose-50 rounded-xl border border-rose-100">
+          <p className="text-xs text-rose-600 font-bold leading-relaxed">
+            This process has no machine assigned, please add one
+          </p>
+        </div>
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            // Optional: trigger add machine modal with this process pre-selected
+          }}
+          className="mt-6 flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm"
+        >
+          <Plus size={14} />
+          Assign Machine
+        </button>
+      </div>
+    );
+  }
+
   const metrics = useMemo(() => generateMetrics(machine), [machine]);
   const StatusIcon = config.icon;
 
   const oeeColor = metrics.oee >= 85 ? 'text-emerald-600' : metrics.oee >= 70 ? 'text-amber-600' : 'text-red-600';
   const oeeBarColor = metrics.oee >= 85 ? 'from-emerald-400 to-emerald-600' : metrics.oee >= 70 ? 'from-amber-400 to-amber-600' : 'from-red-400 to-red-600';
 
+  // ── Single unified fetch - same endpoint as the detail modal ────
   const todayWib = useMemo(() => {
     const now = new Date();
     const wib = new Date(now.getTime() + 7 * 3600000);
     return wib.toISOString().split('T')[0];
   }, []);
 
-  const outParams = new URLSearchParams({ machineId: machine.id, date: todayWib });
-  const outputQueryUrl = `/api/machines/output?${outParams.toString()}`;
-  const { data: outputRes } = useSWR(outputQueryUrl, fetcher, {
+  const dashboardUrl = `/api/machines/${machine.id}/dashboard-machine?date=${todayWib}`;
+  const { data: dashboardRes } = useSWR(dashboardUrl, fetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 5000,
+    dedupingInterval: 10000, // Shares cache with MachineDetailModal - zero duplicate requests
   });
-  const outputApiData = outputRes?.data;
 
-  const defectParams = new URLSearchParams({ machineId: machine.id, date: todayWib });
-  const defectQueryUrl = `/api/machines/defect-rate?${defectParams.toString()}`;
-  const { data: defectRes } = useSWR(defectQueryUrl, fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 5000,
-  });
-  const defectApiData = defectRes?.data;
-  const displayPass = defectApiData?.totalPass ?? metrics.output;
-  const displayReject = defectApiData?.totalReject ?? metrics.reject;
-  const displayTotal = displayPass + displayReject; // Calculated directly from data_items (Pass + Reject)
+  const dashData = dashboardRes?.success ? dashboardRes.data : null;
+  const outputApiData = dashData?.output ?? null;
+  const defectApiData = dashData?.defectRate ?? null;
+
+  const displayPass = outputApiData?.totalPass ?? metrics.output;
+  const displayReject = outputApiData?.totalReject ?? metrics.reject;
+  const displayTotal = outputApiData?.totalProduced ?? (displayPass + displayReject);
   const displayDefectRate = defectApiData?.defectRate ?? 0;
 
   return (
@@ -250,11 +278,9 @@ function MachineCard({ machine, onClick }: { machine: MachineData; onClick: (m: 
           <MetricCell
             label="Throughput"
             value={machine.real_throughput !== undefined && machine.real_throughput !== null
-              ? (machine.real_throughput < 1 ? (machine.real_throughput * 60).toFixed(1) : machine.real_throughput.toFixed(1))
+              ? Number(machine.real_throughput).toFixed(0)
               : metrics.throughput.toString()}
-            unit={machine.real_throughput !== undefined && machine.real_throughput !== null
-              ? (machine.real_throughput < 1 ? "/min" : "/s")
-              : "/hr"}
+            unit=" unit/jam"
             color="text-purple-600"
           />
           <MetricCell
@@ -402,12 +428,9 @@ function MachineDetailModal({
         const data = JSON.parse(event.data);
         if (data.machine_id && data.machine_id !== machine.id) return;
 
-        // Single mutation for the unified endpoint and global grid hooks
+        // Single mutation for the unified endpoint - card and modal share the same SWR cache key
         if (['CYCLE_TIME_UPDATE', 'THROUGHPUT_UPDATE', 'OUTPUT_UPDATE', 'DEFECT_RATE_UPDATE'].includes(data.type)) {
           mutate(dashboardUrl);
-          // Sync background grid cards
-          mutate(`/api/machines/output?machineId=${machine.id}&date=${todayWib}`);
-          mutate(`/api/machines/defect-rate?machineId=${machine.id}&date=${todayWib}`);
         }
       } catch (err) {
         console.error('[ws] Parse error:', err);
@@ -986,8 +1009,8 @@ function MachineDetailModal({
               icon={<Zap size={14} />}
               label="Throughput"
               value={displayThroughput !== null
-                ? (displayThroughput >= 1 ? `${displayThroughput.toFixed(1)}/s` : `${(displayThroughput * 60).toFixed(1)}/min`)
-                : `${metrics.throughput}/hr`}
+                ? `${displayThroughput.toFixed(0)} unit/jam`
+                : `${metrics.throughput} unit/jam`}
               color="text-purple-600"
             />
             <QuickStat
@@ -1021,7 +1044,7 @@ function MachineDetailModal({
                     tooltip: {
                       ...throughputChart.options.plugins.tooltip,
                       callbacks: {
-                        label: (context: any) => `Throughput: ${context.parsed.y} units/hr`
+                        label: (context: any) => `Throughput: ${context.parsed.y} unit/jam`
                       }
                     }
                   }
@@ -1111,35 +1134,29 @@ function ChartCard({ title, subtitle, color, children }: { title: string; subtit
 export default function MachineManagement() {
   const router = useRouter();
   const [machines, setMachines] = useState<MachineData[]>([]);
-  const [lines, setLines] = useState<LineOption[]>([]);
+  const { data: linesRes } = useSWR('/api/lines', fetcher);
+  const lines = linesRes?.success ? linesRes.data : [];
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [filterLine, setFilterLine] = useState('all');
-  const [hasRestoredLine, setHasRestoredLine] = useState(false);
+  const [filterLine, setFilterLine] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('management_selected_line') || 'all';
+    }
+    return 'all';
+  });
   const [selectedMachine, setSelectedMachine] = useState<MachineData | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [fullscreenLineId, setFullscreenLineId] = useState<string | null>(null);
 
-  // Restore filterLine from localStorage on load
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('management_selected_line');
-      if (saved) setFilterLine(saved);
-    } catch { }
-    setHasRestoredLine(true);
-  }, []);
-
   // Save filterLine to localStorage on change
   useEffect(() => {
-    if (hasRestoredLine) {
-      try {
-        localStorage.setItem('management_selected_line', filterLine);
-      } catch { }
-    }
-  }, [filterLine, hasRestoredLine]);
+    try {
+      localStorage.setItem('management_selected_line', filterLine);
+    } catch { }
+  }, [filterLine]);
 
   // Fetch machines
   const fetchMachines = useCallback(async () => {
@@ -1161,22 +1178,7 @@ export default function MachineManagement() {
     }
   }, [filterLine, filterStatus]);
 
-  // Fetch lines for filter
-  const fetchLines = useCallback(async () => {
-    try {
-      const res = await fetch('/api/lines');
-      const json = await res.json();
-      if (json.success) {
-        setLines(json.data || []);
-      }
-    } catch (err) {
-      console.error('Error fetching lines:', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchLines();
-  }, [fetchLines]);
+  // Removed manual fetchLines as we use useSWR now
 
   useEffect(() => {
     // Tampilkan loading skeleton HANYA saat pertama kali fetch atau saat filter berubah awal
@@ -1308,6 +1310,12 @@ export default function MachineManagement() {
           <button
             onClick={() => {
               setFullscreenLineId(filterLine !== 'all' ? filterLine : null);
+              // Trigger revalidate semua SWR cache dashboard-machine agar data matriks langsung tersedia
+              mutate(
+                (key: any) => typeof key === 'string' && key.includes('/api/machines/') && key.includes('/dashboard-machine'),
+                undefined,
+                { revalidate: true }
+              );
               setShowFullscreen(true);
             }}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-[13px] font-bold transition-colors shadow-lg shadow-indigo-600/30"
@@ -1419,7 +1427,7 @@ export default function MachineManagement() {
             className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
           >
             <option value="all">Semua Line</option>
-            {lines.map(line => (
+            {lines.map((line: any) => (
               <option key={line.id} value={line.id}>{line.name}</option>
             ))}
           </select>
