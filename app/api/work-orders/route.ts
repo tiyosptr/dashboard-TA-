@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin'
+import { captureDowntimeSnapshot } from '@/services/downtime-snapshot'
 
 // GET all work orders with optional filters
 export async function GET(request: NextRequest) {
@@ -31,49 +32,53 @@ export async function GET(request: NextRequest) {
 
     // Enhanced: Fetch task JSONB data using raw SQL to bypass Prisma model limitations
     const taskDataRaw = await prisma.$queryRawUnsafe(
-      `SELECT id, task FROM public.work_order WHERE id::text = ANY($1)`,
+      `SELECT id, task, data FROM public.work_order WHERE id::text = ANY($1)`,
       workOrders.map(wo => wo.id)
     ) as any[];
 
     // Create a map for quick lookup
-    const taskMap = new Map(taskDataRaw.map(item => [item.id, item.task]));
+    const taskMap = new Map(taskDataRaw.map(item => [item.id, { task: item.task, data: item.data }]));
 
     // Map Prisma camelCase to snake_case for frontend compatibility
-    const mapped = workOrders.map((wo: any) => ({
-      id: wo.id,
-      work_order_code: wo.workOrderCode,
-      type: wo.type,
-      priority: wo.priority,
-      machine_id: wo.machineId,
-      machine_name: wo.machineName,
-      line_id: wo.lineId,
-      name_line: wo.nameLine,
-      status: wo.status,
-      assigned_to: wo.assignedTo,
-      created_at: wo.createdAt,
-      schedule_date: wo.scheduleDate,
-      completed_at: wo.completedAt,
-      estimated_duration: wo.estimatedDuration,
-      actual_duration: wo.actualDuration,
-      description: wo.description,
-      location: wo.nameLine || wo.line?.name || 'N/A',
-      task: taskMap.get(wo.id) || wo.task,
-      tasks: (wo.tasks || []).map((t: any) => ({
-        id: t.id,
-        work_order_id: t.workOrderId,
-        description: t.description,
-        completed: t.completed === 'true' || t.completed === true,
-        completed_at: t.completedAt,
-      })),
-      notes: (wo.notes || []).map((n: any) => ({
-        id: n.id,
-        work_order_id: n.workOrderId,
-        text: n.text,
-        author: n.author,
-        timestamp: n.timestamp,
-      })),
-      requiredParts: [],
-    }))
+    const mapped = workOrders.map((wo: any) => {
+      const taskData = taskMap.get(wo.id);
+      return {
+        id: wo.id,
+        work_order_code: wo.workOrderCode,
+        type: wo.type,
+        priority: wo.priority,
+        machine_id: wo.machineId,
+        machine_name: wo.machineName,
+        line_id: wo.lineId,
+        name_line: wo.nameLine,
+        status: wo.status,
+        assigned_to: wo.assignedTo,
+        created_at: wo.createdAt,
+        schedule_date: wo.scheduleDate,
+        completed_at: wo.completedAt,
+        estimated_duration: wo.estimatedDuration,
+        actual_duration: wo.actualDuration,
+        description: wo.description,
+        location: wo.nameLine || wo.line?.name || 'N/A',
+        task: taskData?.task || wo.task,
+        data: taskData?.data || null,
+        tasks: (wo.tasks || []).map((t: any) => ({
+          id: t.id,
+          work_order_id: t.workOrderId,
+          description: t.description,
+          completed: t.completed === 'true' || t.completed === true,
+          completed_at: t.completedAt,
+        })),
+        notes: (wo.notes || []).map((n: any) => ({
+          id: n.id,
+          work_order_id: n.workOrderId,
+          text: n.text,
+          author: n.author,
+          timestamp: n.timestamp,
+        })),
+        requiredParts: [],
+      };
+    })
 
     return NextResponse.json({ success: true, data: mapped })
   } catch (error) {
@@ -291,6 +296,28 @@ export async function PUT(request: NextRequest) {
 
         console.log('[WO Complete] Recording history for type:', workOrder.type, 'as event:', eventType);
 
+        // Capture snapshot at completion time (reflects state when downtime ended)
+        let completionSnapshot = null;
+        if (workOrder.machineId && eventType === 'downtime') {
+          try {
+            completionSnapshot = await captureDowntimeSnapshot(workOrder.machineId);
+            console.log('[WO Complete] Completion snapshot captured:', completionSnapshot);
+          } catch (snapErr) {
+            console.error('[WO Complete] Failed to capture completion snapshot (non-fatal):', snapErr);
+          }
+        }
+
+        // Also read the snapshot that was stored on the work_order.data at creation time
+        // (the "at-downtime-start" snapshot) — prefer that for history record
+        let woData: any = null;
+        try {
+          const rawWo = await prisma.$queryRawUnsafe(
+            `SELECT data FROM public.work_order WHERE id = $1::uuid`,
+            workOrder.id
+          ) as any[];
+          woData = rawWo?.[0]?.data ?? null;
+        } catch { /* non-fatal */ }
+
         const historyPayload = {
           work_order_id: workOrder.id,
           machine_id: workOrder.machineId,
@@ -306,10 +333,12 @@ export async function PUT(request: NextRequest) {
           assigned_to: workOrder.assignedTo,
           work_order_code: workOrder.workOrderCode,
           description: workOrder.description,
-          task: rest.task || (workOrder as any).task, // Fallback to existing task if new one not provided
+          task: rest.task || (workOrder as any).task,
           is_resolved: true,
           resolved_at: doneAt,
           resolved_by: workOrder.assignedTo,
+          // data: snapshot at downtime start (from work_order.data), or completion snapshot as fallback
+          data: woData ?? completionSnapshot,
         };
 
         const { error: historyErr } = await supabaseAdmin

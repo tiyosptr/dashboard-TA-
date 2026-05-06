@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { captureDowntimeSnapshot } from '@/services/downtime-snapshot';
+import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
 
 /**
  * POST /api/machines/status-change
@@ -158,6 +160,44 @@ export async function POST(request: NextRequest) {
                 },
             };
         });
+
+        // ── Post-transaction: capture downtime snapshot when entering downtime ──
+        // This runs outside the transaction so it doesn't block the status change.
+        if (result.changed && result.newStatus === 'downtime') {
+            // Fire-and-forget: capture snapshot and write to machine_status_log.data (if column exists)
+            captureDowntimeSnapshot(machine_id)
+                .then(async (snapshot) => {
+                    // Find the newly created open downtime log entry and attach snapshot.
+                    // The machine_status_log.data column must exist in the database.
+                    // If it doesn't exist yet, this update will fail silently.
+                    const { data: newLog } = await supabaseAdmin
+                        .from('machine_status_log')
+                        .select('id')
+                        .eq('machine_id', machine_id)
+                        .eq('status', 'downtime')
+                        .is('end_time', null)
+                        .order('start_time', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (newLog?.id) {
+                        const { error: updateErr } = await supabaseAdmin
+                            .from('machine_status_log')
+                            .update({ data: snapshot } as any)
+                            .eq('id', newLog.id);
+
+                        if (updateErr) {
+                            // Column may not exist yet — log but don't crash
+                            console.warn('[status-change] Could not save snapshot to machine_status_log (column may not exist):', updateErr.message);
+                        } else {
+                            console.log('[status-change] Downtime snapshot saved to machine_status_log:', newLog.id);
+                        }
+                    }
+                })
+                .catch((err) => {
+                    console.error('[status-change] Failed to capture downtime snapshot:', err);
+                });
+        }
 
         return NextResponse.json({
             success: true,

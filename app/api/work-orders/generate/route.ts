@@ -1,6 +1,7 @@
 //api/work-orders/generate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/supabase-admin';
+import { captureDowntimeSnapshot } from '@/services/downtime-snapshot';
 
 
 // Generate Work Order ID
@@ -67,8 +68,24 @@ export async function POST(request: NextRequest) {
     }
 
     const woCode = generateWorkOrderId();
-    // Create work order
-    const workOrderData = {
+    
+    // Get metrics data from notification (if available) or capture new snapshot
+    let metricsData = notification.data; // Try to use existing metrics from notification
+    
+    if (!metricsData && notification.machine_id) {
+      // If notification doesn't have metrics, capture new snapshot
+      try {
+        metricsData = await captureDowntimeSnapshot(notification.machine_id);
+        console.log('[WO Generate] Downtime snapshot captured:', metricsData);
+      } catch (snapErr) {
+        console.error('[WO Generate] Failed to capture snapshot (non-fatal):', snapErr);
+      }
+    } else if (metricsData) {
+      console.log('[WO Generate] Using metrics from notification:', notificationId);
+    }
+
+    // Create work order with metrics data
+    const workOrderData: any = {
       work_order_code: woCode,
       type: 'downtime',
       priority: determinePriority(notification.severity),
@@ -84,6 +101,7 @@ export async function POST(request: NextRequest) {
       estimated_duration: '2 hours',
       actual_duration: null,
       description: notification.messages,
+      data: metricsData, // Store metrics in work_order.data
     };
 
     const { data: workOrder, error: woError } = await supabaseAdmin
@@ -134,7 +152,7 @@ export async function POST(request: NextRequest) {
     });
     if (noteError) console.error('Error creating note:', noteError);
 
-    // Update notification with work_order_id
+    // Update notification with work_order_id (keep existing metrics data)
     const { error: notifUpdateError } = await supabaseAdmin
       .from('notification')
       .update({
@@ -142,6 +160,7 @@ export async function POST(request: NextRequest) {
         acknowladged: 'true',
         acknowladged_by: 'System',
         acknowladged_at: new Date().toISOString(),
+        // Don't overwrite notification.data - it already has the metrics
       })
       .eq('id', notificationId);
 

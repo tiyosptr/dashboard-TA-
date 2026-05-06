@@ -48,7 +48,7 @@ function HistoryChart({
                     </div>
                     <div>
                         <h2 className="text-xs font-bold text-slate-800 tracking-wide">HISTORY</h2>
-                        <p className="text-[9px] text-slate-400">Last 7 Days</p>
+                        <p className="text-[9px] text-slate-400">Total Downtime - Last 7 Days</p>
                     </div>
                 </div>
                 <div className="flex items-center justify-center h-full">
@@ -71,7 +71,7 @@ function HistoryChart({
                     </div>
                     <div>
                         <h2 className="text-xs font-bold text-slate-800 tracking-wide">HISTORY</h2>
-                        <p className="text-[9px] text-slate-400">Last 7 Days</p>
+                        <p className="text-[9px] text-slate-400">Total Downtime - Last 7 Days</p>
                     </div>
                 </div>
                 <div className="flex items-center justify-center h-full">
@@ -251,7 +251,7 @@ function HistoryChart({
                     </div>
                     <div>
                         <h2 className="text-xs font-bold text-slate-800 tracking-wide">HISTORY</h2>
-                        <p className="text-[9px] text-slate-400">Last 7 Days</p>
+                        <p className="text-[9px] text-slate-400">Total Downtime - Last 7 Days</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 rounded-lg border border-slate-200">

@@ -15,6 +15,10 @@ lalu untuk pengambilan data masih lama apalagi ketika klik machine detail itu da
 
 7. Tambahkan fungsi shift, jadi engine ai berfungsi per shift. AI memantau shift tersebut dengan mengambil data-data yang diperlukan dalam shift yang sedang berjalan/actual setelah itu jika terjadi anomali datanya maka ai langsung memberikan warning dan jika sudah kritis maka ai langsung mengirim notofikasi untuk downtimenya
 
+8. buatkan sistem predictive maintenance dengan mengambil data_items pada table data machine dan juga metrik lainnya untuk mengambil data per prosess dan perline agar sinkron dengan mesin yang terdaftar, troughput machine, cycle time machine, defect by process, run time. sistem ini memantau semua data machine yang didapatkan. jika warning maka sistem ini mengirim data ke front end dan jika kritis maka ai langsung mengirim notofikasi untuk downtimenya. apakah bisa kalau sudah terjadi downtime langsung membuat work order dan menghentikan/mengaktifkan shutdown pada mesin tersebut agar tidak terjadi anomali data lagi. jika ada table untuk melakukan penyimpanan data predictive maintenance anda dapat langsung generate saja menggunakan orm prisma.
+
+
+
 
 
 

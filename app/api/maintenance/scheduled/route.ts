@@ -8,81 +8,78 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const lineId = searchParams.get('line_id');
 
-    // 1. Fetch ALL machines
-    const { data: machines, error: machineError } = await supabaseAdmin
-      .from('machine')
-      .select('*')
-      .order('name_machine', { ascending: true });
-
-    if (machineError) throw machineError;
-
-    // 2. Fetch ALL processes for mapping
-    const { data: processes } = await supabaseAdmin
-      .from('process')
-      .select('id, name, machine_id');
-    
-    const processMap = new Map<string, any>();
-    (processes || []).forEach(p => processMap.set(p.id, p));
-
-    // 3. Fetch ALL line_processes for mapping
-    const { data: lineProcesses } = await supabaseAdmin
+    // Fetch machines that are actually assigned to a line via line_process → process → machine
+    // Using an inner join approach: only machines with a valid line_process entry are returned.
+    const { data: lineProcesses, error: lpError } = await supabaseAdmin
       .from('line_process')
       .select(`
-        id, line_id, process_id, process_order,
-        line:line_id (id, name)
-      `);
+        id,
+        process_order,
+        line_id,
+        line:line_id (
+          id,
+          name
+        ),
+        process:process_id (
+          id,
+          name,
+          machine_id,
+          machine:machine_id (
+            id,
+            name_machine,
+            status,
+            last_maintenance,
+            next_maintenance,
+            total_running_hours,
+            total_downtime_hours
+          )
+        )
+      `)
+      .order('process_order', { ascending: true });
 
-    // machine_id -> { lineName, lineId, processName, processOrder }
-    const machineLineMap = new Map<string, any>();
-    (lineProcesses || []).forEach((lp: any) => {
-      const proc = processMap.get(lp.process_id);
-      if (proc && proc.machine_id) {
-        machineLineMap.set(proc.machine_id, {
-          lineName: lp.line?.name || 'Unassigned',
-          lineId: lp.line?.id || null,
-          processName: proc.name || 'Unknown',
-          processOrder: lp.process_order || 999
-        });
-      }
-    });
+    if (lpError) throw lpError;
 
-    // 4. Fetch additional stats (open logs)
-    const { data: openLogs, error: logsError } = await supabaseAdmin
+    // Fetch open logs for live duration calculation
+    const { data: openLogs } = await supabaseAdmin
       .from('machine_status_log')
       .select('machine_id, status, start_time')
-      .is('end_time', null)
+      .is('end_time', null);
 
-    if (logsError) console.error('Error fetching open logs:', logsError)
+    const liveDurationMap = new Map<string, { activeAdd: number; downtimeAdd: number }>();
+    const nowMs = Date.now();
+    (openLogs || []).forEach((log: any) => {
+      const startMs = new Date(log.start_time).getTime();
+      if (isNaN(startMs)) return;
+      const diffHours = Math.max(0, (nowMs - startMs) / (1000 * 3600));
+      const mId = log.machine_id;
+      if (!mId) return;
+      if (!liveDurationMap.has(mId)) {
+        liveDurationMap.set(mId, { activeAdd: 0, downtimeAdd: 0 });
+      }
+      const stats = liveDurationMap.get(mId)!;
+      const s = log.status?.toLowerCase().trim() || '';
+      if (s === 'active' || s === 'running') stats.activeAdd += diffHours;
+      else if (['downtime', 'down', 'error'].includes(s)) stats.downtimeAdd += diffHours;
+    });
 
-    const liveDurationMap = new Map<string, { activeAdd: number, downtimeAdd: number }>()
-    const nowMs = Date.now()
-    if (openLogs) {
-      openLogs.forEach((log: any) => {
-        const startMs = new Date(log.start_time).getTime()
-        if (isNaN(startMs)) return;
-        const diffHours = Math.max(0, (nowMs - startMs) / (1000 * 3600))
-        const machineId = log.machine_id?.toLowerCase()
-        if (!machineId) return
+    // Build result — one entry per line_process that has a machine assigned
+    const seen = new Set<string>(); // deduplicate by machine_id
+    const mappedMachines: any[] = [];
 
-        if (!liveDurationMap.has(machineId)) {
-          liveDurationMap.set(machineId, { activeAdd: 0, downtimeAdd: 0 })
-        }
-        const stats = liveDurationMap.get(machineId)!
-        const s = log.status?.toLowerCase().trim() || ''
-        if (s === 'active' || s === 'running') stats.activeAdd += diffHours
-        else if (['downtime', 'down', 'error'].includes(s)) stats.downtimeAdd += diffHours
-      })
-    }
+    for (const lp of (lineProcesses || []) as any[]) {
+      const proc = lp.process;
+      const machine = proc?.machine;
+      if (!machine) continue; // skip processes with no machine assigned
 
-    // 5. Final Assembly
-    const mappedMachines = (machines || []).map((machine: any) => {
-      const mId = machine.id?.toLowerCase()
-      const lineInfo = machineLineMap.get(machine.id)
-      const liveStats = liveDurationMap.get(mId) || { activeAdd: 0, downtimeAdd: 0 }
-      const currentRunning = parseFloat(machine.total_running_hours || '0')
-      const currentDowntime = parseFloat(machine.total_downtime_hours || '0')
-      
-      return {
+      // Deduplicate: if same machine appears in multiple line_processes, take first
+      if (seen.has(machine.id)) continue;
+      seen.add(machine.id);
+
+      const liveStats = liveDurationMap.get(machine.id) || { activeAdd: 0, downtimeAdd: 0 };
+      const currentRunning = parseFloat(machine.total_running_hours || '0');
+      const currentDowntime = parseFloat(machine.total_downtime_hours || '0');
+
+      mappedMachines.push({
         id: machine.id,
         name_machine: machine.name_machine,
         status: machine.status,
@@ -90,29 +87,32 @@ export async function GET(request: NextRequest) {
         next_maintenance: machine.next_maintenance,
         total_running_hours: (currentRunning + liveStats.activeAdd).toFixed(4),
         total_downtime_hours: (currentDowntime + liveStats.downtimeAdd).toFixed(4),
-        line_name: lineInfo?.lineName || 'Unassigned',
-        line_id: lineInfo?.lineId || null,
-        process_order: lineInfo?.processOrder || 999,
-        process_name: lineInfo?.processName || 'Unknown',
-      };
-    });
-
-    // 5. Filter by lineId if provided
-    let finalData = mappedMachines;
-    if (lineId && lineId !== 'all') {
-      finalData = finalData.filter(m => m.line_id === lineId);
+        line_name: lp.line?.name || null,
+        line_id: lp.line?.id || null,
+        process_name: proc?.name || 'Unknown',
+        process_order: lp.process_order || 999,
+      });
     }
 
-    // Sort by line name, then process order
-    const sortedMachines = finalData.sort((a, b) => {
+    // Filter by lineId if provided
+    let finalData = mappedMachines;
+    if (lineId && lineId !== 'all') {
+      finalData = finalData.filter((m: any) => m.line_id === lineId);
+    }
+
+    // Sort: by line name, then process order
+    finalData.sort((a: any, b: any) => {
       const lineCompare = (a.line_name || '').localeCompare(b.line_name || '');
       if (lineCompare !== 0) return lineCompare;
       return (a.process_order || 0) - (b.process_order || 0);
     });
 
-    return NextResponse.json({ success: true, data: sortedMachines });
+    return NextResponse.json({ success: true, data: finalData });
   } catch (error: any) {
     console.error('Error fetching scheduled maintenance data:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message, details: String(error), hint: '', code: '' },
+      { status: 500 }
+    );
   }
 }

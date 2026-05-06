@@ -1,18 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import useSWR from 'swr';
-import { Search, Calendar, Clock, User, Download, Filter, Settings, AlertTriangle, FileText, CheckCircle, History as HistoryIcon, Briefcase, Loader2, ChevronRight } from 'lucide-react';
+import { Search, Calendar, Clock, User, Download, Filter, Settings, AlertTriangle, FileText, CheckCircle, History as HistoryIcon, Briefcase, Loader2, ChevronRight, TrendingDown, Factory, BarChart2, Activity } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import BaseModal from '@/app/components/ui/BaseModal';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
-function formatDuration(seconds: number | null) {
-  if (!seconds || seconds <= 0) return '0m 0s';
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
+function formatDuration(seconds: number | string | null | undefined) {
+  const s = seconds == null ? 0 : Number(seconds);
+  if (!s || s <= 0) return '0m 0s';
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const secs = Math.floor(s % 60);
   if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
   if (minutes > 0) return `${minutes}m ${secs}s`;
   return `${secs}s`;
@@ -42,7 +43,54 @@ export default function MaintenanceHistory() {
   
   const woHistory = woResponse?.success ? woResponse.data : [];
   const logSummaries = logResponse?.success ? logResponse.machineSummaries : [];
+  const allLogs: any[] = logResponse?.success ? logResponse.data : [];
   const allLines = linesResponse?.success ? linesResponse.data : [];
+
+  // ── Downtime report: aggregate per line from enriched logs ──────────────────
+  const downtimeReport = useMemo(() => {
+    const lineMap = new Map<string, {
+      line_name: string;
+      totalDowntimeSec: number;
+      totalMaintSec: number;
+      downtimeCount: number;
+      maintCount: number;
+      machines: Set<string>;
+    }>();
+
+    allLogs.forEach((log: any) => {
+      const lineName: string = log.line_name;
+      if (!lineName) return;
+      const status = (log.status ?? '').toLowerCase();
+      const secs = Number(log.duration_seconds ?? 0);
+
+      if (!lineMap.has(lineName)) {
+        lineMap.set(lineName, {
+          line_name: lineName,
+          totalDowntimeSec: 0,
+          totalMaintSec: 0,
+          downtimeCount: 0,
+          maintCount: 0,
+          machines: new Set(),
+        });
+      }
+      const entry = lineMap.get(lineName)!;
+      entry.machines.add(log.machine_id);
+
+      if (status === 'downtime' || status === 'down') {
+        entry.totalDowntimeSec += secs;
+        entry.downtimeCount++;
+      } else if (status === 'maintenance') {
+        entry.totalMaintSec += secs;
+        entry.maintCount++;
+      }
+    });
+
+    return Array.from(lineMap.values())
+      .sort((a, b) => b.totalDowntimeSec - a.totalDowntimeSec);
+  }, [allLogs]);
+
+  const grandTotalDowntimeSec = downtimeReport.reduce((s, l) => s + l.totalDowntimeSec, 0);
+  const grandTotalMaintSec = downtimeReport.reduce((s, l) => s + l.totalMaintSec, 0);
 
   const filteredWo = (woHistory || []).filter((item: any) => {
     if (!searchTerm) return true;
@@ -58,7 +106,10 @@ export default function MaintenanceHistory() {
   });
 
   const filteredSummaries = (logSummaries || []).filter((item: any) => {
-    const line = item.line_name || 'Unassigned';
+    // Exclude machines with no line assignment (line_name is null)
+    if (!item.line_name) return false;
+
+    const line = item.line_name;
     if (filterLine !== 'all' && line !== filterLine) return false;
 
     if (!searchTerm) return true;
@@ -90,6 +141,64 @@ export default function MaintenanceHistory() {
 
   return (
     <div className="space-y-6">
+      {/* ── Downtime Report — always visible ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <TrendingDown size={15} className="text-rose-500" />
+          <span className="text-xs font-black text-slate-600 uppercase tracking-widest">
+            Total Downtime (All Lines)
+          </span>
+        </div>
+
+        {logLoading ? (
+          <div className="flex items-center gap-3 py-6 px-4 bg-white rounded-2xl border border-slate-100">
+            <Loader2 size={18} className="animate-spin text-rose-400" />
+            <span className="text-sm text-slate-400 font-semibold">Menghitung data downtime...</span>
+          </div>
+        ) : downtimeReport.length === 0 ? (
+          <div className="py-8 text-center bg-white rounded-2xl border border-slate-100">
+            <TrendingDown size={28} className="mx-auto text-slate-200 mb-2" />
+            <p className="text-sm text-slate-400 font-semibold">Belum ada data downtime</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            {downtimeReport.map((line) => (
+              <div
+                key={line.line_name}
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-3"
+              >
+                {/* Line name */}
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
+                    <Factory size={13} className="text-rose-500" />
+                  </div>
+                  <span className="text-xs font-black text-slate-700 truncate">{line.line_name}</span>
+                </div>
+
+                {/* Total Downtime — main value */}
+                <div className="bg-rose-50 rounded-xl px-3 py-2.5 border border-rose-100">
+                  <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-0.5">
+                    Total Downtime
+                  </p>
+                  <p className="text-lg font-black text-rose-600 leading-tight">
+                    {formatDuration(line.totalDowntimeSec)}
+                  </p>
+                  <p className="text-[10px] text-rose-400 mt-0.5">{line.downtimeCount} kejadian</p>
+                </div>
+
+                {/* Maintenance secondary */}
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] text-slate-400 font-semibold">Maintenance</span>
+                  <span className="text-[11px] font-bold text-blue-600">
+                    {formatDuration(line.totalMaintSec)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
         <div>
@@ -191,7 +300,8 @@ export default function MaintenanceHistory() {
             ) : (
               Object.entries(
                 filteredSummaries.reduce((acc: any, log: any) => {
-                  const line = log.line_name || 'Unassigned';
+                  const line = log.line_name;
+                  if (!line) return acc; // skip unassigned
                   if (!acc[line]) acc[line] = [];
                   acc[line].push(log);
                   return acc;
@@ -470,7 +580,7 @@ export default function MaintenanceHistory() {
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg border border-indigo-200 transition-colors"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                   Print Tasks
                 </button>
               </div>

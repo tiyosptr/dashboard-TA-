@@ -101,6 +101,7 @@ export interface WorkOrder {
   requiredParts: Part[];
   notes: Note[];
   location?: string;
+  data?: any; // JSONB field
 }
 
 export interface Task {
@@ -200,6 +201,7 @@ export interface Notification {
   work_order_id?: string;
   process_id?: string;
   name_line?: string;
+  data?: any; // JSONB field
 }
 
 export interface DowntimeAlert {

@@ -352,7 +352,7 @@ export async function calculateLineAvailability(
                     .from('machine_status_log')
                     .select('machine_id, start_time, end_time, duration_seconds, status')
                     .in('machine_id', chunk)
-                    .eq('status', 'downtime')
+                    .eq('status', 'downtime') // Consistent status filter
                     .gte('start_time', shiftStart.toISOString())
                     .lt('start_time', shiftEnd.toISOString()); // Changed from lte to lt
 

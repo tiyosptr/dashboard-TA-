@@ -216,6 +216,166 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
 
       const historyData = json.data || [];
       
+      // Helper function to render JSONB data as HTML with better formatting
+      const renderJsonData = (data: any): string => {
+        if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+          return '';
+        }
+        
+        let parsedData = data;
+        if (typeof data === 'string') {
+          try {
+            parsedData = JSON.parse(data);
+          } catch (e) {
+            parsedData = data;
+          }
+        }
+
+        // Filter out IDs
+        const filterIds = (obj: any): any => {
+          if (typeof obj !== 'object' || obj === null) return obj;
+          if (Array.isArray(obj)) return obj.map(item => filterIds(item));
+          
+          const filtered: any = {};
+          for (const [key, value] of Object.entries(obj)) {
+            if (key.toLowerCase().includes('_id') || key.toLowerCase() === 'id') continue;
+            filtered[key] = typeof value === 'object' ? filterIds(value) : value;
+          }
+          return filtered;
+        };
+
+        const cleanData = filterIds(parsedData);
+
+        // Format label
+        const formatLabel = (key: string): string => {
+          return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        };
+
+        // Format value
+        const formatValue = (value: any): string => {
+          if (value === null || value === undefined) return '-';
+          if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+          if (typeof value === 'number') return value.toLocaleString('id-ID');
+          if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}/) && !isNaN(Date.parse(value))) {
+            return new Date(value).toLocaleString('id-ID', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          }
+          return String(value);
+        };
+
+        // Render section
+        const renderSection = (sectionKey: string, sectionData: any): string => {
+          if (typeof sectionData !== 'object' || sectionData === null) {
+            return `
+              <div style="display: flex; justify-content: space-between; padding: 8px 12px; background: #f9fafb; border-radius: 6px; margin-bottom: 6px;">
+                <span style="font-weight: 600; color: #374151; font-size: 13px;">${formatLabel(sectionKey)}</span>
+                <span style="font-weight: 500; color: #111827; font-size: 13px;">${formatValue(sectionData)}</span>
+              </div>
+            `;
+          }
+
+          const sectionColor = 
+            sectionKey.toLowerCase().includes('runtime') ? '#3b82f6' :
+            sectionKey.toLowerCase().includes('maintenance') ? '#f97316' :
+            sectionKey.toLowerCase().includes('performance') ? '#10b981' :
+            sectionKey.toLowerCase().includes('event') ? '#8b5cf6' :
+            '#6b7280';
+
+          let content = `
+            <div style="border: 2px solid ${sectionColor}20; border-radius: 12px; overflow: hidden; margin-bottom: 16px; background: white;">
+              <div style="background: linear-gradient(to right, ${sectionColor}15, ${sectionColor}05); padding: 12px 16px; border-bottom: 1px solid ${sectionColor}30;">
+                <span style="font-weight: bold; color: ${sectionColor}; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+                  ${formatLabel(sectionKey)}
+                </span>
+              </div>
+              <div style="padding: 16px;">
+          `;
+
+          for (const [key, value] of Object.entries(sectionData)) {
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+              // Nested object
+              content += `
+                <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 12px;">
+                  <div style="background: #f9fafb; padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">
+                    <span style="font-weight: 600; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
+                      ${formatLabel(key)}
+                    </span>
+                  </div>
+                  <div style="padding: 12px;">
+              `;
+              
+              for (const [nestedKey, nestedValue] of Object.entries(value)) {
+                const valueColor = 
+                  typeof nestedValue === 'number' ? '#2563eb' :
+                  typeof nestedValue === 'boolean' ? (nestedValue ? '#059669' : '#dc2626') :
+                  '#111827';
+                
+                content += `
+                  <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f3f4f6;">
+                    <span style="color: #6b7280; font-size: 12px;">${formatLabel(nestedKey)}</span>
+                    <span style="color: ${valueColor}; font-weight: 600; font-size: 12px;">${formatValue(nestedValue)}</span>
+                  </div>
+                `;
+              }
+              
+              content += `
+                  </div>
+                </div>
+              `;
+            } else {
+              // Simple key-value
+              const valueColor = 
+                typeof value === 'number' ? '#2563eb' :
+                typeof value === 'boolean' ? (value ? '#059669' : '#dc2626') :
+                '#111827';
+              
+              content += `
+                <div style="display: flex; justify-content: space-between; padding: 10px 12px; background: #f9fafb; border-radius: 6px; margin-bottom: 6px;">
+                  <span style="color: #6b7280; font-size: 13px;">${formatLabel(key)}</span>
+                  <span style="color: ${valueColor}; font-weight: 600; font-size: 13px;">${formatValue(value)}</span>
+                </div>
+              `;
+            }
+          }
+
+          content += `
+              </div>
+            </div>
+          `;
+
+          return content;
+        };
+
+        if (typeof cleanData === 'object' && !Array.isArray(cleanData)) {
+          let html = `
+            <div style="margin-top: 20px; padding: 20px; background: linear-gradient(to bottom, #f0f9ff, #ffffff); border: 2px solid #3b82f6; border-radius: 16px;">
+              <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                  <span style="color: white; font-size: 20px;">📊</span>
+                </div>
+                <div>
+                  <h3 style="margin: 0; color: #1e40af; font-size: 16px; font-weight: bold;">Machine Metrics at Downtime</h3>
+                  <p style="margin: 4px 0 0 0; color: #64748b; font-size: 12px;">Captured performance data</p>
+                </div>
+              </div>
+          `;
+
+          for (const [key, value] of Object.entries(cleanData)) {
+            html += renderSection(key, value);
+          }
+
+          html += `</div>`;
+          return html;
+        }
+        
+        return '';
+      };
+      
       const printContent = `
         <html>
           <head>
@@ -263,6 +423,7 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
                           ${h.task.map((t: any) => `<li>${typeof t === 'string' ? t : t.description}</li>`).join('')}
                         </ul>
                       ` : ''}
+                      ${renderJsonData(h.data)}
                     </td>
                   </tr>
                 `).join('') : '<tr><td colspan="5" style="text-align: center;">No history found</td></tr>'}

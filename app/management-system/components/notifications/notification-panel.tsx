@@ -20,6 +20,8 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/supabase';
 import { Notification, Technician } from '@/types';
 import { toast } from 'react-hot-toast';
+import JsonDataDisplay from '@/app/components/ui/JsonDataDisplay';
+import NotificationDetail from './notification-detail';
 
 interface TechnicianModalProps {
   isOpen: boolean;
@@ -201,6 +203,7 @@ export default function NotificationsPage() {
   const [selectedNotificationId, setSelectedNotificationId] = useState<string | null>(null);
   const [selectedNotificationMachineName, setSelectedNotificationMachineName] = useState('');
   const [selectedNotificationLineName, setSelectedNotificationLineName] = useState<string | undefined>(undefined);
+  const [selectedNotificationForDetail, setSelectedNotificationForDetail] = useState<Notification | null>(null);
 
   // Load notifications
   const loadNotifications = async (showLoader = true) => {
@@ -687,6 +690,17 @@ export default function NotificationsPage() {
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedNotificationForDetail(notification);
+                        }}
+                        className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2"
+                      >
+                        <Info size={16} />
+                        View Details
+                      </button>
+
                       {!notification.work_order_id && !notification.acknowledged && (
                         <>
                           <button
@@ -695,13 +709,6 @@ export default function NotificationsPage() {
                           >
                             <Check size={16} />
                             Generate Work Order
-                          </button>
-                          <button
-                            onClick={() => markAsAcknowledged(notification.id)}
-                            className="px-4 py-2 bg-yellow-600 text-white text-sm rounded-lg hover:bg-yellow-700 transition-colors font-medium flex items-center gap-2"
-                          >
-                            <Check size={16} />
-                            Acknowledge Only
                           </button>
                         </>
                       )}
@@ -760,6 +767,14 @@ export default function NotificationsPage() {
         notificationMachineName={selectedNotificationMachineName}
         notificationLineName={selectedNotificationLineName}
       />
+
+      {/* Notification Detail Modal */}
+      {selectedNotificationForDetail && (
+        <NotificationDetail
+          notification={selectedNotificationForDetail}
+          onClose={() => setSelectedNotificationForDetail(null)}
+        />
+      )}
     </div>
   );
 }

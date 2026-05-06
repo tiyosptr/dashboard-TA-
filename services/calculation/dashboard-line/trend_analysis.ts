@@ -160,7 +160,7 @@ export async function aggregateAndSaveTrendAnalysis(
 
         console.log(`[trend_analysis] Output from data_items: ${total_output} (Pass: ${total_pass}, Reject: ${total_reject})`);
 
-        // 3. Hitung downtime untuk jam ini
+        // 3. Hitung downtime untuk jam ini - use consistent status filter
         // Ambil machine IDs dari line
         const { data: lineProcesses } = await supabaseAdmin
             .from('line_process')
@@ -179,16 +179,30 @@ export async function aggregateAndSaveTrendAnalysis(
         if (machineIds.length > 0) {
             const { data: downtimeData } = await supabaseAdmin
                 .from('machine_status_log')
-                .select('duration_seconds')
+                .select('duration_seconds, start_time, end_time')
                 .in('machine_id', machineIds)
-                .eq('status', 'downtime')
+                .eq('status', 'downtime') // Consistent status filter
                 .gte('start_time', hourStart.toISOString())
-                .lt('start_time', hourEnd.toISOString())
-                .not('duration_seconds', 'is', null);
+                .lt('start_time', hourEnd.toISOString());
 
             if (downtimeData) {
-                total_downtime_seconds = downtimeData.reduce((sum, row) => sum + (row.duration_seconds || 0), 0);
-                downtime_count = downtimeData.length;
+                const now = new Date();
+                downtimeData.forEach((row) => {
+                    let duration = 0;
+                    
+                    if (row.duration_seconds !== null) {
+                        duration = Number(row.duration_seconds);
+                    } else if (row.end_time) {
+                        duration = (new Date(row.end_time).getTime() - new Date(row.start_time).getTime()) / 1000;
+                    } else {
+                        // Ongoing downtime - calculate up to now or hour end
+                        const endRef = now < hourEnd ? now : hourEnd;
+                        duration = Math.max(0, (endRef.getTime() - new Date(row.start_time).getTime()) / 1000);
+                    }
+                    
+                    total_downtime_seconds += duration;
+                    downtime_count++;
+                });
             }
         }
 

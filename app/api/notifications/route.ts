@@ -92,6 +92,25 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { machineId, machineName, reason, severity = 'high', processId } = body;
 
+    // Fetch machine metrics when creating downtime notification
+    let metricsData = null;
+    if (machineId) {
+      try {
+        const url = new URL(request.url);
+        const metricsUrl = `${url.protocol}//${url.host}/api/machines/metrics?machineId=${machineId}`;
+        const metricsResponse = await fetch(metricsUrl);
+        const metricsResult = await metricsResponse.json();
+        
+        if (metricsResult.success) {
+          metricsData = metricsResult.data;
+          console.log('[Notification] Captured machine metrics for downtime:', machineId);
+        }
+      } catch (metricsErr) {
+        console.error('[Notification] Failed to fetch machine metrics:', metricsErr);
+        // Continue without metrics data
+      }
+    }
+
     const notificationData = {
       type: 'downtime',
       severity: severity,
@@ -106,6 +125,7 @@ export async function POST(request: NextRequest) {
       duration: null,
       start_at: new Date().toISOString(),
       done_at: null,
+      data: metricsData, // Store metrics in JSONB column
     };
 
     const { data, error } = await supabaseAdmin

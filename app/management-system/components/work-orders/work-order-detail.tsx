@@ -4,6 +4,7 @@ import { X, User, Clock, MapPin, CheckCircle, Circle, Package, AlertCircle, Edit
 import { WorkOrder, WorkOrderStatus } from '@/types';
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
+import JsonDataDisplay from '@/app/components/ui/JsonDataDisplay';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -15,7 +16,7 @@ interface WorkOrderDetailProps {
 
 export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: WorkOrderDetailProps) {
 
-  const [activeTab, setActiveTab] = useState<'details' | 'tasks'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'metrics'>('details');
   const [elapsedDuration, setElapsedDuration] = useState<number>(0);
 
   const { data: historyResponse } = useSWR(
@@ -162,7 +163,21 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
             Tasks
             {activeTab === 'tasks' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
           </button>
-
+          <button
+            onClick={() => setActiveTab('metrics')}
+            className={`px-6 py-4 font-semibold text-sm transition-all relative ${activeTab === 'metrics'
+                ? 'text-indigo-600'
+                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+          >
+            <div className="flex items-center gap-2">
+              Metrics
+              {(workOrder as any).data && (
+                <span className="w-2 h-2 bg-indigo-600 rounded-full animate-pulse"></span>
+              )}
+            </div>
+            {activeTab === 'metrics' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full"></div>}
+          </button>
         </div>
 
         {/* Content */}
@@ -356,6 +371,83 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
                     </div>
                   )}
                 </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'metrics' && (
+            <div className="space-y-4">
+              {(workOrder as any).data ? (
+                <>
+                  {/* Header Info */}
+                  <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl p-6 text-white">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="text-2xl font-bold mb-2">Machine Metrics</h3>
+                        <p className="text-indigo-100 text-sm">
+                          Performance data captured at the time of downtime incident
+                        </p>
+                      </div>
+                      <div className="bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg border border-white/30">
+                        <p className="text-xs text-indigo-100 mb-1">Captured At</p>
+                        <p className="text-sm font-bold">
+                          {(workOrder as any).data?.captured_at 
+                            ? new Date((workOrder as any).data.captured_at).toLocaleString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : new Date(workOrder.created_at).toLocaleString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                          }
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Metrics Display */}
+                  <JsonDataDisplay 
+                    data={(workOrder as any).data} 
+                    title="Performance & Status Data"
+                    defaultExpanded={true}
+                    className="shadow-lg"
+                  />
+
+                  {/* Info Footer */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <AlertCircle size={20} className="text-blue-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-blue-900 text-sm mb-1">About This Data</h4>
+                        <p className="text-xs text-blue-700 leading-relaxed">
+                          This metrics data was automatically captured when the downtime notification was created. 
+                          It provides a snapshot of the machine's performance and status at the exact moment of the incident, 
+                          which can help in root cause analysis and preventive maintenance planning.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-20">
+                  <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                    <AlertCircle size={40} className="text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-2">No Metrics Data Available</h3>
+                  <p className="text-sm text-gray-500 max-w-md mx-auto">
+                    This work order doesn't have associated metrics data. 
+                    Metrics are automatically captured for work orders generated from downtime notifications.
+                  </p>
+                </div>
               )}
             </div>
           )}

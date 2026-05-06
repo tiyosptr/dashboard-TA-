@@ -13,7 +13,7 @@ import {
   CheckCircle,
   Clock,
   TrendingUp,
-  LayoutDashboard
+  LayoutDashboard,
 } from 'lucide-react';
 import WorkOrderList from './components/work-orders/work-order-list';
 import MachineList from './components/machines/machine-list';
@@ -46,7 +46,7 @@ export default function ManagementSystemPage() {
     { id: 'overview' as TabType, label: 'Overview', icon: <Activity size={18} /> },
     // { id: 'machine-dashboard' as TabType, label: 'Machine Dashboard', icon: <LayoutDashboard size={18} /> },
     { id: 'work-orders' as TabType, label: 'Work Orders', icon: <FileText size={18} /> },
-    { id: 'machines' as TabType, label: 'Machine Management', icon: <Wrench size={18} /> },
+    { id: 'machines' as TabType, label: 'Machines', icon: <Wrench size={18} /> },
     { id: 'history' as TabType, label: 'History', icon: <Clock size={18} /> },
     { id: 'schedule' as TabType, label: 'Schedule Maintenance', icon: <Calendar size={18} /> },
     { id: 'notifications' as TabType, label: 'Notifications', icon: <Bell size={18} /> },
@@ -144,7 +144,7 @@ export default function ManagementSystemPage() {
               <div className="h-8 w-px bg-gray-300"></div>
 
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Management Maintenance System</h1>
+                <h1 className="text-lg font-bold text-gray-900">Management System</h1>
                 <p className="text-xs text-gray-500">PT Volex Indonesia</p>
               </div>
             </div>
@@ -155,10 +155,10 @@ export default function ManagementSystemPage() {
                 <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
               </button>
               <div className="flex items-center gap-1.5 bg-gray-100 px-3 py-1.5 rounded-lg">
-                <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-xs">
+                {/* <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-xs">
                   A
-                </div>
-                <span className="font-medium text-gray-700 text-sm">Admin</span>
+                </div> */}
+                {/* <span className="font-medium text-gray-700 text-sm">Admin</span> */}
               </div>
             </div>
           </div>
