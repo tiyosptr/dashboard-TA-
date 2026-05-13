@@ -48,6 +48,13 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
     setIsSubmitting(true);
     
     try {
+      // Ensure we have a valid machine ID
+      const machineId = formData.machineId || schedule?.id || schedule?.machineId;
+      
+      if (!machineId) {
+        throw new Error('Machine ID is required');
+      }
+
       if (activeTab === 'schedule') {
         if (!formData.nextMaintenance) {
           throw new Error('Please select a next maintenance date');
@@ -56,7 +63,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            machine_id: formData.machineId,
+            machine_id: machineId,
             next_maintenance: formData.nextMaintenance,
           })
         });
@@ -70,7 +77,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            machine_id: formData.machineId, 
+            machine_id: machineId, 
             new_status: formData.machineStatus.toLowerCase() 
           })
         });
@@ -81,7 +88,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
 
         // 2. Generate WO
         const woBody: any = {
-          machineId: formData.machineId,
+          machineId: machineId,
           machineName: schedule?.name_machine || schedule?.machineName,
           lineId: schedule?.line_id || schedule?.lineId,
           nameLine: schedule?.line_name || schedule?.nameLine,

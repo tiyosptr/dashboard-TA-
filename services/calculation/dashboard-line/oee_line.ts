@@ -145,9 +145,10 @@ export async function calculateLineQuality(
     const reject = rejectCount || 0;
     const total = good + reject;
     const ratio = total > 0 ? good / total : 0;
+    // Bulatkan ke 2 desimal untuk persentase (0.9876 = 98.76%)
     const pct = Math.round(ratio * 10000) / 100;
 
-    console.log('[OEE Quality] Result:', { good, reject, total, pct });
+    console.log('[OEE Quality] Result:', { good, reject, total, ratio: ratio.toFixed(4), pct });
 
     return { good, reject, total, ratio, pct };
 }
@@ -219,13 +220,14 @@ export async function calculateLinePerformance(
         performance_ratio = actual / target_ideal;
     }
 
-    // Konversi ke persentase dengan pembulatan 2 angka desimal
+    // Konversi ke persentase dengan pembulatan 2 angka desimal (0.1430 = 14.30%)
     const performance_pct = Math.round(performance_ratio * 10000) / 100;
 
     console.log('[OEE Performance] Result:', { 
         total_actual: actual, 
-        target_ideal, 
+        target_ideal: target_ideal.toFixed(2), 
         operating_hours: operating_hours.toFixed(2),
+        performance_ratio: performance_ratio.toFixed(4),
         performance_pct 
     });
 
@@ -484,7 +486,11 @@ export async function saveLineAvailability(
     }
 
     // Hitung OEE final = Availability × Performance × Quality
+    // Gunakan nilai rasio asli (0-1) untuk perhitungan, bukan yang sudah dibulatkan
     const oee_final = avResult.availability * avResult.performance * avResult.quality;
+    
+    // Bulatkan ke 4 desimal untuk presisi yang lebih baik (0.1430 = 14.30%)
+    const oee_final_rounded = Math.round(oee_final * 10000) / 10000;
 
     const payload: Record<string, any> = {
         line_id,
@@ -493,7 +499,7 @@ export async function saveLineAvailability(
         availability: avResult.availability,  // rasio 0–1
         perfomance: avResult.performance,     // rasio 0–1 (typo db col: perfomance)
         quality: avResult.quality,            // rasio 0–1
-        oee_line: oee_final,                  // rasio 0–1 (A × P × Q)
+        oee_line: oee_final_rounded,          // rasio 0–1 (A × P × Q) dengan presisi 4 desimal
         updated_at: new Date().toISOString(),
     };
 
@@ -512,7 +518,7 @@ export async function saveLineAvailability(
     }
 
     console.log(
-        `[oee_line] ✓ Saved | OEE: ${Math.round(oee_final * 100)}%` +
+        `[oee_line] ✓ Saved | OEE: ${(oee_final_rounded * 100).toFixed(2)}%` +
         ` | Availability: ${avResult.availability_pct}%` +
         ` | Performance: ${avResult.performance_pct}%` +
         ` | Quality: ${avResult.quality_pct}%` +

@@ -1,10 +1,11 @@
 'use client';
 
-import { X, User, Clock, MapPin, CheckCircle, Circle, Package, AlertCircle, Edit, Trash2 } from 'lucide-react';
-import { WorkOrder, WorkOrderStatus } from '@/types';
+import { X, User, Clock, MapPin, CheckCircle, Circle, Package, AlertCircle, Edit, Trash2, RefreshCw, Search } from 'lucide-react';
+import { WorkOrder, WorkOrderStatus, Technician } from '@/types';
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import JsonDataDisplay from '@/app/components/ui/JsonDataDisplay';
+import { toast } from 'react-hot-toast';
 
 const fetcher = (url: string) => fetch(url).then(r => r.json());
 
@@ -18,6 +19,12 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
 
   const [activeTab, setActiveTab] = useState<'details' | 'tasks' | 'metrics'>('details');
   const [elapsedDuration, setElapsedDuration] = useState<number>(0);
+  const [showTechnicianModal, setShowTechnicianModal] = useState(false);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [isLoadingTechnicians, setIsLoadingTechnicians] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedTechnician, setSelectedTechnician] = useState<string | null>(null);
+  const [isChangingTechnician, setIsChangingTechnician] = useState(false);
 
   const { data: historyResponse } = useSWR(
     workOrder.machine_id ? `/api/work-order-history?machineId=${workOrder.machine_id}` : null,
@@ -51,6 +58,77 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
     const secs = seconds % 60;
     return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
   };
+
+  // Load technicians
+  const loadTechnicians = async () => {
+    setIsLoadingTechnicians(true);
+    try {
+      const response = await fetch('/api/technician');
+      const result = await response.json();
+      if (result.success) {
+        setTechnicians(result.data);
+      }
+    } catch (error) {
+      console.error('Error loading technicians:', error);
+      toast.error('Failed to load technicians');
+    } finally {
+      setIsLoadingTechnicians(false);
+    }
+  };
+
+  // Change technician handler
+  const handleChangeTechnician = async () => {
+    if (!selectedTechnician) return;
+    
+    setIsChangingTechnician(true);
+    try {
+      const response = await fetch('/api/work-orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: workOrder.id,
+          assignedTo: selectedTechnician, // Changed to camelCase
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success(`Technician changed to ${selectedTechnician}`);
+        
+        // Update the local workOrder object immediately
+        workOrder.assigned_to = selectedTechnician;
+        
+        setShowTechnicianModal(false);
+        setSelectedTechnician(null);
+        
+        // Trigger refresh event for other components
+        window.dispatchEvent(new CustomEvent('machine-data-updated'));
+        
+        // Force parent to refresh without full page reload
+        setTimeout(() => {
+          onClose(); // Close modal to trigger parent refresh
+        }, 500);
+      } else {
+        throw new Error(result.error || 'Failed to change technician');
+      }
+    } catch (error: any) {
+      console.error('Error changing technician:', error);
+      toast.error(error.message || 'Failed to change technician');
+    } finally {
+      setIsChangingTechnician(false);
+    }
+  };
+
+  const filteredTechnicians = technicians.filter((t) =>
+    t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.specialization?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Check if change technician button should be shown
+  const canChangeTechnician = 
+    workOrder.type?.toLowerCase() === 'downtime' && 
+    workOrder.status === 'On-Solving';
 
 
 
@@ -197,9 +275,23 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
                     <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
                       <User size={22} />
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Assigned To</p>
-                      <p className="font-bold text-gray-900 text-base">{workOrder.assigned_to}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="font-bold text-gray-900 text-base">{workOrder.assigned_to}</p>
+                        {canChangeTechnician && (
+                          <button
+                            onClick={() => {
+                              setShowTechnicianModal(true);
+                              loadTechnicians();
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg hover:bg-indigo-700 transition-colors font-semibold"
+                          >
+                            <RefreshCw size={12} />
+                            Change
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -490,6 +582,145 @@ export default function WorkOrderDetail({ workOrder, onClose, onStatusChange }: 
           </div>
         </div>
       </div>
+
+      {/* Technician Change Modal */}
+      {showTechnicianModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Change Technician</h3>
+                  <p className="text-indigo-100 text-xs mt-0.5">
+                    Select new technician for <span className="font-semibold">{workOrder.machine_name}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowTechnicianModal(false);
+                    setSelectedTechnician(null);
+                    setSearchTerm('');
+                  }}
+                  disabled={isChangingTechnician}
+                  className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-50"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="px-6 pt-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Search technician..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Technician List */}
+            <div className="px-6 py-3 max-h-72 overflow-y-auto">
+              {isLoadingTechnicians ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw size={32} className="animate-spin text-indigo-600" />
+                  <span className="ml-3 text-gray-600">Loading technicians...</span>
+                </div>
+              ) : filteredTechnicians.length === 0 ? (
+                <div className="text-center py-8">
+                  <User className="mx-auto text-gray-300 mb-2" size={40} />
+                  <p className="text-gray-500 text-sm">No technicians found</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredTechnicians.map((tech) => (
+                    <button
+                      key={tech.id}
+                      onClick={() => setSelectedTechnician(tech.name)}
+                      disabled={isChangingTechnician}
+                      className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                        selectedTechnician === tech.name
+                          ? 'border-indigo-500 bg-indigo-50 shadow-md'
+                          : 'border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/50'
+                      } disabled:opacity-50`}
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                          selectedTechnician === tech.name
+                            ? 'bg-gradient-to-br from-indigo-500 to-purple-600'
+                            : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                        }`}
+                      >
+                        {tech.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 text-sm">{tech.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {tech.specialization || 'General Technician'}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                            tech.is_active
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {tech.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                        {selectedTechnician === tech.name && (
+                          <CheckCircle size={20} className="text-indigo-600 flex-shrink-0" />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowTechnicianModal(false);
+                  setSelectedTechnician(null);
+                  setSearchTerm('');
+                }}
+                disabled={isChangingTechnician}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleChangeTechnician}
+                disabled={!selectedTechnician || isChangingTechnician}
+                className="px-4 py-2 text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md"
+              >
+                {isChangingTechnician ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Changing...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={16} />
+                    Change Technician
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
