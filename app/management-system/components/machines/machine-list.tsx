@@ -403,11 +403,11 @@ function MachineDetailModal({
       if (data.success) {
         if (onStatusChange) onStatusChange();
       } else {
-        alert(data.error || 'Gagal mengubah status mesin');
+        alert(data.error || 'Failed to change machine status');
       }
     } catch (err) {
-      console.error('Error changing status:', err);
-      alert('Terjadi kesalahan jaringan saat mengubah status.');
+      console.error(err);
+      alert('Network error occurred while changing status.');
     } finally {
       setIsUpdating(false);
     }
@@ -726,8 +726,8 @@ function MachineDetailModal({
       },
     },
     scales: {
-      x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-      y: { stacked: true, grid: { color: 'rgba(226,232,240,0.5)' }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+      x: { stacked: false, grid: { display: false }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
+      y: { stacked: false, grid: { color: 'rgba(226,232,240,0.5)' }, border: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
     },
   };
 
@@ -818,7 +818,7 @@ function MachineDetailModal({
                 className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl transition-colors flex items-center gap-2 text-white text-[11px] font-bold shadow-sm backdrop-blur-sm"
               >
                 {isUpdating ? <RefreshCw size={14} className="animate-spin text-white" /> : <Settings size={14} className="text-white" />}
-                <span>Ubah Status</span>
+                <span>Change Status</span>
               </button>
 
               {showStatusMenu && (
@@ -879,7 +879,7 @@ function MachineDetailModal({
                 onClick={() => setSelectedDate(todayWib)}
                 className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition-colors"
               >
-                Hari ini
+                Today
               </button>
             )}
           </div>
@@ -929,7 +929,7 @@ function MachineDetailModal({
                   </div>
                   <div>
                     <h3 className="text-base font-black text-slate-800">Machine History & Troubleshooting Log</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tindakan pemeliharaan dan perbaikan terakhir</p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Recent maintenance and repair actions</p>
                   </div>
                 </div>
               </div>
@@ -976,7 +976,7 @@ function MachineDetailModal({
                 </div>
               ) : (
                 <div className="text-center py-12 bg-white rounded-xl border border-slate-200 border-dashed">
-                  <p className="text-sm text-slate-500 font-bold">Belum ada riwayat tindakan untuk mesin ini.</p>
+                  <p className="text-sm text-slate-500 font-bold">No history records for this machine.</p>
                 </div>
               )}
 
@@ -985,7 +985,7 @@ function MachineDetailModal({
                   onClick={() => setShowHistory(false)}
                   className="px-6 py-2 bg-slate-800 text-white text-[11px] font-bold rounded-xl hover:bg-slate-900 transition-colors shadow-lg shadow-slate-200"
                 >
-                  Selesai Melihat Riwayat
+                  Done Viewing History
                 </button>
               </div>
             </div>
@@ -1056,7 +1056,7 @@ function MachineDetailModal({
               title={`Cycle Time — ${displayCycleTime !== null ? formatCTValue(displayCycleTime) : 'N/A'}`}
               subtitle={hasRealCycleTime
                 ? `Total Item: ${displayCycleTimeOutput} pcs`
-                : 'Mengalkulasi riwayat...'
+                : 'Calculating history...'
               }
               color="teal"
             >
@@ -1080,7 +1080,7 @@ function MachineDetailModal({
 
             <ChartCard
               title={dashboardLoading ? 'Defect/Reject Rate' : `Defect/Reject Rate — ${defectRateValue}%`}
-              subtitle="Persentase defect per jam"
+              subtitle="Defect percentage per hour"
               color="rose"
             >
               <Line data={defectChart.data} options={defectChart.options as any} />
@@ -1302,7 +1302,7 @@ export default function MachineManagement() {
             Machine Management
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Real-time monitoring dan kontrol seluruh mesin produksi.
+            Real-time monitoring and control of all production machines.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -1329,7 +1329,7 @@ export default function MachineManagement() {
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-bold transition-colors shadow-sm shadow-indigo-600/20"
           >
             <Plus size={14} />
-            Tambah Mesin
+            Add Machine
           </button>
           <button
             onClick={handleRefresh}
@@ -1362,17 +1362,17 @@ export default function MachineManagement() {
               )}
             </div>
             <p className="text-2xl font-black text-slate-900">{statusCounts.total}</p>
-            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total Mesin</p>
-            <p className="text-[9px] text-slate-400 mt-0.5">Semua mesin terdaftar</p>
+            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total Machines</p>
+            <p className="text-[9px] text-slate-400 mt-0.5">All registered machines</p>
           </button>
 
           {/* 5 Status filter cards */}
           {[
-            { key: 'active', label: 'Active', count: statusCounts.active, desc: 'Sedang beroperasi', icon: Play, gradient: 'from-emerald-500 to-emerald-600' },
-            { key: 'maintenance', label: 'Maintenance', count: statusCounts.maintenance, desc: 'Perawatan terjadwal', icon: Wrench, gradient: 'from-blue-500 to-blue-600' },
-            { key: 'onhold', label: 'On Hold', count: statusCounts.onhold, desc: 'Ditahan sementara', icon: PauseCircle, gradient: 'from-amber-500 to-amber-600' },
-            { key: 'downtime', label: 'Downtime', count: statusCounts.downtime, desc: 'Berhenti/kerusakan', icon: AlertTriangle, gradient: 'from-rose-500 to-rose-600' },
-            { key: 'inactive', label: 'Inactive', count: statusCounts.inactive, desc: 'Tidak aktif', icon: PowerOff, gradient: 'from-slate-400 to-slate-500' },
+            { key: 'active', label: 'Active', count: statusCounts.active, desc: 'Currently operating', icon: Play, gradient: 'from-emerald-500 to-emerald-600' },
+            { key: 'maintenance', label: 'Maintenance', count: statusCounts.maintenance, desc: 'Scheduled maintenance', icon: Wrench, gradient: 'from-blue-500 to-blue-600' },
+            { key: 'onhold', label: 'On Hold', count: statusCounts.onhold, desc: 'Temporarily on hold', icon: PauseCircle, gradient: 'from-amber-500 to-amber-600' },
+            { key: 'downtime', label: 'Downtime', count: statusCounts.downtime, desc: 'Stopped/broken', icon: AlertTriangle, gradient: 'from-rose-500 to-rose-600' },
+            { key: 'inactive', label: 'Inactive', count: statusCounts.inactive, desc: 'Inactive', icon: PowerOff, gradient: 'from-slate-400 to-slate-500' },
           ].map(s => (
             <button
               key={s.key}
@@ -1402,9 +1402,9 @@ export default function MachineManagement() {
             <Search size={16} className="text-indigo-500" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-slate-800">Daftar Mesin</h2>
+            <h2 className="text-sm font-bold text-slate-800">Machine List</h2>
             <p className="text-[10px] text-slate-400 mt-0.5">
-              {filteredMachines.length} dari {statusCounts.total} mesin ditampilkan
+              {filteredMachines.length} of {statusCounts.total} machines displayed
             </p>
           </div>
         </div>
@@ -1414,7 +1414,7 @@ export default function MachineManagement() {
             <Search size={14} className="text-slate-400 flex-shrink-0" />
             <input
               type="text"
-              placeholder="Cari mesin, line, process..."
+              placeholder="Search machine, line, process..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="flex-1 bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-400 outline-none"
@@ -1426,7 +1426,7 @@ export default function MachineManagement() {
             onChange={(e) => setFilterLine(e.target.value)}
             className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
           >
-            <option value="all">Semua Line</option>
+            <option value="all">All Lines</option>
             {lines.map((line: any) => (
               <option key={line.id} value={line.id}>{line.name}</option>
             ))}
@@ -1437,7 +1437,7 @@ export default function MachineManagement() {
             onChange={(e) => setFilterStatus(e.target.value)}
             className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
           >
-            <option value="all">Semua Status</option>
+            <option value="all">All Statuses</option>
             <option value="active">Active</option>
             <option value="maintenance">Maintenance</option>
             <option value="onhold">On Hold</option>
@@ -1458,7 +1458,7 @@ export default function MachineManagement() {
               </div>
               <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-400 border-[3px] border-white animate-bounce" />
             </div>
-            <p className="text-slate-500 font-bold tracking-wide">Sinkronisasi Sensor Mesin...</p>
+            <p className="text-slate-500 font-bold tracking-wide">Synchronizing Machine Sensors...</p>
           </div>
         </div>
       ) : filterLine === 'all' ? (
@@ -1466,9 +1466,9 @@ export default function MachineManagement() {
           <div className="w-20 h-20 rounded-full bg-indigo-50 flex items-center justify-center mb-6 shadow-inner border border-indigo-100">
             <Layers size={32} className="text-indigo-500 animate-pulse text-opacity-80" />
           </div>
-          <h3 className="text-2xl font-black text-slate-800 tracking-tight">Pilih Area Produksi</h3>
+          <h3 className="text-2xl font-black text-slate-800 tracking-tight">Select Production Area</h3>
           <p className="text-sm font-medium text-slate-500 mt-3 max-w-sm leading-relaxed">
-            Data mesin terlalu luas. Harap pilih <strong>Line Produksi</strong> spesifik pada menu <em>dropdown</em> di atas untuk memantau performa dan rincian mesin secara mendetail.
+            Machine data is too broad. Please select a specific <strong>Production Line</strong> from the <em>dropdown</em> menu above to monitor performance and machine details.
           </p>
         </div>
       ) : filteredMachines.length > 0 ? (

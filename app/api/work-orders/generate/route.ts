@@ -46,23 +46,34 @@ export async function POST(request: NextRequest) {
 
     if (notifError) throw notifError;
 
-    // Resolve line info from process_id via line_process
+    // Resolve line info from machine_id via process and line_process
     let lineId: string | null = null;
     let nameLine: string | null = null;
 
-    if (notification.process_id) {
-      const { data: lpData } = await supabaseAdmin
-        .from('line_process')
-        .select('line_id, line:line_id(id, name_line)')
-        .eq('process_id', notification.process_id)
+    if (notification.machine_id) {
+      // Find the process associated with this machine
+      const { data: processData } = await supabaseAdmin
+        .from('process')
+        .select('id')
+        .eq('machine_id', notification.machine_id)
         .limit(1)
         .single();
-
-      if (lpData) {
-        lineId = lpData.line_id;
-        const line = lpData.line as any;
-        if (line) {
-          nameLine = line.name_line || null;
+        
+      if (processData?.id) {
+        // Then find the line
+        const { data: lpData } = await supabaseAdmin
+          .from('line_process')
+          .select('line_id, line:line_id(id, name)')
+          .eq('process_id', processData.id)
+          .limit(1)
+          .single();
+          
+        if (lpData) {
+          lineId = lpData.line_id;
+          const line = lpData.line as any;
+          if (line) {
+            nameLine = line.name || null;
+          }
         }
       }
     }

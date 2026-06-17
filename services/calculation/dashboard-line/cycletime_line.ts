@@ -165,7 +165,10 @@ export async function calculateLineCycleTime(
             if (!latestActualOutputId && aoRows && aoRows.length > 0) latestActualOutputId = aoRows[0].id;
         }
 
-        const actualCycleTime = (totalOutput > 0) ? Math.round((total_shift_seconds / totalOutput) * 100) / 100 : null;
+        // BUG-04 FIX: Gunakan elapsed time (waktu yang sudah berjalan) alih-alih 
+        // total_shift_seconds (durasi penuh shift), konsisten dengan computeLineCycleTimeRealtime()
+        const operatingTimeSec = calculateElapsedShiftTime(shift_start_ts, shift_end_ts);
+        const actualCycleTime = (totalOutput > 0 && operatingTimeSec > 0) ? Math.round((operatingTimeSec / totalOutput) * 100) / 100 : null;
 
         await insertCycleTimeLine({
             line_id, line_process_id, shift_id: activeShiftId,
@@ -175,7 +178,7 @@ export async function calculateLineCycleTime(
         return {
             success: true, step: 'done', line_id, line_process_id,
             last_process_name: process_name, shift_id: activeShiftId,
-            shift_name, operating_time_seconds: total_shift_seconds,
+            shift_name, operating_time_seconds: operatingTimeSec,
             total_output: totalOutput, actual_cycle_time: actualCycleTime,
         };
 

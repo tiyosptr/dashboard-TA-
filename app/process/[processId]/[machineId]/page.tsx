@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
+import { toast } from 'react-hot-toast';
 import {
   ArrowLeft, Cpu, Clock, AlertTriangle, Wrench,
   Activity, CheckCircle, Loader2, AlertCircle,
   Calendar, Timer, TrendingDown, RefreshCw,
-  ServerCrash, ChevronRight,
+  ServerCrash, ChevronRight, Check,
 } from 'lucide-react';
 
 // ─── Fetcher for SWR ──────────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ export default function ProcessMachineDetailPage() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // SWR for data fetching with auto-revalidation
-  const { data: statsData, error: statsError, mutate: mutateStats } = useSWR(
+  const { data: statsData, error: statsError, mutate: mutateStatsRaw } = useSWR(
     machineId ? `/api/machines/${machineId}/runtime-stats` : null,
     fetcher,
     {
@@ -103,6 +104,9 @@ export default function ProcessMachineDetailPage() {
       revalidateOnReconnect: true,
     }
   );
+
+  // Stable reference so useEffect dependency doesn't change on every render
+  const mutateStats = useCallback(() => mutateStatsRaw(), [mutateStatsRaw]);
 
   const { data: processData, error: processError } = useSWR(
     '/api/process/with-machines',
@@ -142,6 +146,7 @@ export default function ProcessMachineDetailPage() {
   const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | 'critical'>('high');
   const [submitting, setSubmitting] = useState(false);
   const [submitOk, setSubmitOk] = useState(false);
+  const [showConfirmAlert, setShowConfirmAlert] = useState(false);
 
   // ── Submit downtime ───────────────────────────────────────────────
   const handleSubmit = async () => {
@@ -167,10 +172,16 @@ export default function ProcessMachineDetailPage() {
         setSubmitOk(false);
         setReason('');
         setSeverity('high');
+        setShowConfirmAlert(false);
         mutateStats(); // Revalidate data using SWR
+        // Toast pop-up muncul setelah modal tertutup
+        toast.success(
+          `Downtime berhasil dilaporkan! Notifikasi telah dikirim ke sistem.`,
+          { duration: 5000 }
+        );
       }, 1600);
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message || 'Gagal mengirim laporan downtime. Silakan coba lagi.');
     } finally {
       setSubmitting(false);
     }
@@ -180,76 +191,61 @@ export default function ProcessMachineDetailPage() {
   useEffect(() => {
     if (!machineId) return;
 
-    const connectWebSocket = () => {
-      // Connect to standalone WebSocket server on port 3001
-      const wsUrl = 'ws://localhost:3001';
+    // Flag to prevent reconnect after intentional cleanup (unmount / strict-mode teardown)
+    let intentionallyClosed = false;
 
+    const connectWebSocket = () => {
+      if (intentionallyClosed) return;
+
+      const wsUrl = 'ws://localhost:3001';
       console.log('[WebSocket] Connecting to:', wsUrl);
-      
+
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
         console.log('[WebSocket] Connected to standalone server');
-        // Send subscription message if needed
-        ws.send(JSON.stringify({
-          type: 'subscribe',
-          machineId: machineId,
-        }));
+        ws.send(JSON.stringify({ type: 'subscribe', machineId }));
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           console.log('[WebSocket] Message received:', data);
-
-          // Handle different message types
           if (data.type === 'MACHINE_STATUS_UPDATE' || data.type === 'DASHBOARD_UPDATE') {
-            console.log('[WebSocket] Machine status update detected, revalidating data...');
-            
-            // Revalidate data using SWR
+            console.log('[WebSocket] Update detected, revalidating data...');
             mutateStats();
-            
-            // If current status is downtime and we receive an update, check if it changed to active
-            if (machine?.status?.toLowerCase() === 'downtime') {
-              // Fetch latest status to check if it's now active
-              fetch(`/api/machines/${machineId}/runtime-stats`)
-                .then(r => r.json())
-                .then(json => {
-                  if (json.success && json.data.machine.status?.toLowerCase() === 'active') {
-                    console.log('[WebSocket] Machine status changed to ACTIVE!');
-                    mutateStats(); // Force refresh
-                  }
-                })
-                .catch(err => console.error('[WebSocket] Error checking status:', err));
-            }
           }
         } catch (err) {
           console.error('[WebSocket] Error parsing message:', err);
         }
       };
 
-      ws.onerror = (error) => {
-        console.error('[WebSocket] Connection error - server may not be running');
+      ws.onerror = () => {
+        // Only log as error if we didn't intentionally close
+        if (!intentionallyClosed) {
+          console.error('[WebSocket] Connection error - server may not be running');
+        }
       };
 
       ws.onclose = () => {
-        console.log('[WebSocket] Connection closed, attempting to reconnect in 5s...');
         wsRef.current = null;
-        
-        // Attempt to reconnect after 5 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket();
-        }, 5000);
+        // Only attempt to reconnect if not intentionally closed
+        if (!intentionallyClosed) {
+          console.log('[WebSocket] Connection closed, attempting to reconnect in 5s...');
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000);
+        }
       };
     };
 
     connectWebSocket();
 
-    // Cleanup on unmount
+    // Cleanup on unmount (or strict-mode double-invoke)
     return () => {
+      intentionallyClosed = true;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
       if (wsRef.current) {
         console.log('[WebSocket] Closing connection');
@@ -257,7 +253,7 @@ export default function ProcessMachineDetailPage() {
         wsRef.current = null;
       }
     };
-  }, [machineId, machine?.status, mutateStats]);
+  }, [machineId, mutateStats]);
 
   // ── Derived ───────────────────────────────────────────────────────
   const cfg = statusCfg(machine?.status ?? null);
@@ -510,7 +506,11 @@ export default function ProcessMachineDetailPage() {
       {showModal && (
         <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => !submitting && setShowModal(false)}
+          onClick={() => {
+            if (!submitting) {
+              setShowModal(false);
+            }
+          }}
         >
           <div
             className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8"
@@ -587,7 +587,7 @@ export default function ProcessMachineDetailPage() {
                     Cancel
                   </button>
                   <button
-                    onClick={handleSubmit}
+                    onClick={() => setShowConfirmAlert(true)}
                     disabled={submitting || !reason.trim()}
                     className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
@@ -599,6 +599,40 @@ export default function ProcessMachineDetailPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmation Alert ── */}
+      {showConfirmAlert && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle size={32} className="text-red-500" />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 mb-2">Confirm Downtime</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              Are you sure you want to report this machine as experiencing downtime? This action will update the system status immediately.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirmAlert(false)}
+                disabled={submitting}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmAlert(false);
+                  handleSubmit();
+                }}
+                disabled={submitting}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm transition-colors disabled:opacity-50"
+              >
+                Yes, Report It
+              </button>
+            </div>
           </div>
         </div>
       )}

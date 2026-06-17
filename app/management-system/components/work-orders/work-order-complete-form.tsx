@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, CheckCircle, Plus, Trash2, Save, Clock } from 'lucide-react';
 import { WorkOrder } from '@/types';
+import { toast } from 'react-hot-toast';
 
 interface WorkOrderCompleteFormProps {
   workOrder: WorkOrder;
@@ -29,6 +30,8 @@ export default function WorkOrderCompleteForm({ workOrder, onClose, onSuccess }:
     setTasks(tasks.filter((_, i) => i !== index));
   };
 
+  const [submitStep, setSubmitStep] = useState<string>('');
+
   const handleSubmit = async () => {
     let finalTasks = [...tasks];
     
@@ -38,26 +41,44 @@ export default function WorkOrderCompleteForm({ workOrder, onClose, onSuccess }:
     }
 
     if (finalTasks.length === 0) {
-      alert('Please add at least one task or description of what was done.');
+      toast.error('Add at least one performed action.');
       return;
     }
 
     if (isMaintenanceType && !nextMaintenanceDate) {
-      alert('Please select a date for the next maintenance.');
+      toast.error('Select the next maintenance date.');
       return;
     }
 
     setIsSubmitting(true);
+    setSubmitStep('Saving task completion...');
+
     try {
+      // Create abort controller with 30s timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       console.log('Submitting completed tasks:', finalTasks, 'Next Maintenance:', nextMaintenanceDate);
+      
+      setSubmitStep('Updating work order status...');
       await onSuccess(finalTasks, nextMaintenanceDate || undefined);
-    } catch (error) {
+      
+      clearTimeout(timeoutId);
+      setSubmitStep('Done!');
+      toast.success('Work order successfully completed! Data saved.', { duration: 5000 });
+    } catch (error: any) {
       console.error('Error completing work order:', error);
-      alert('Failed to complete work order. Please try again.');
+      if (error?.name === 'AbortError') {
+        toast.error('Request timeout. Server is processing — refresh the page to check status.');
+      } else {
+        toast.error('Failed to complete work order. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
+      setSubmitStep('');
     }
   };
+
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center z-[70] p-4 animate-in fade-in duration-300">
@@ -216,17 +237,36 @@ export default function WorkOrderCompleteForm({ workOrder, onClose, onSuccess }:
         <div className="p-8 bg-white border-t border-slate-100 flex gap-4">
           <button
             onClick={onClose}
-            className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl text-slate-500 font-black hover:bg-slate-50 hover:border-slate-200 transition-all text-sm uppercase tracking-widest"
+            disabled={isSubmitting}
+            className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl text-slate-500 font-black hover:bg-slate-50 hover:border-slate-200 transition-all text-sm uppercase tracking-widest disabled:opacity-40"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || (tasks.length === 0 && !newTask.trim())}
-            className="flex-[2] flex items-center justify-center gap-3 px-6 py-4 bg-emerald-600 text-white rounded-2xl font-black hover:bg-emerald-700 disabled:opacity-40 shadow-xl shadow-emerald-200 transition-all text-sm uppercase tracking-widest group"
+            className="flex-[2] flex flex-col items-center justify-center gap-1 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-black hover:bg-emerald-700 disabled:opacity-60 shadow-xl shadow-emerald-200 transition-all text-sm uppercase tracking-widest group overflow-hidden relative"
           >
-            <Save size={20} className="group-hover:scale-110 transition-transform" />
-            {isSubmitting ? 'Saving Progress...' : 'Finish & Update Machine'}
+            {isSubmitting ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                  <span className="text-xs">{submitStep || 'Processing...'}</span>
+                </div>
+                {/* Progress bar */}
+                <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden mt-1">
+                  <div className={`h-full bg-white rounded-full transition-all duration-1000 ${submitStep === 'Done!' ? 'w-full' : 'w-2/3 animate-pulse'}`} />
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Save size={20} className="group-hover:scale-110 transition-transform" />
+                Finish &amp; Update Machine
+              </div>
+            )}
           </button>
         </div>
       </div>

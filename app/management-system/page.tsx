@@ -21,6 +21,7 @@ import MaintenanceHistory from './components/maintenance/maintenance-history';
 import MaintenanceSchedule from './components/maintenance/maintenance-schedule';
 import NotificationPanel from './components/notifications/notification-panel';
 import MachineDashboardOverview from './components/machines/machine-dashboard-overview';
+import RealtimeNotifToast from './components/notifications/realtime-notif-toast';
 // Tambahkan 'machine-dashboard' di type
 import { TabType } from '@/types';
 import useSWR from 'swr';
@@ -53,10 +54,13 @@ export default function ManagementSystemPage() {
   ];
 
   const { data: woData } = useSWR('/api/work-orders', fetcher, { refreshInterval: 10000 });
-  const { data: notifData } = useSWR('/api/notifications?filter=unread', fetcher, { refreshInterval: 10000 });
+  const { data: notifData } = useSWR('/api/notifications?filter=all', fetcher, { refreshInterval: 10000 });
 
   const workOrders = woData?.success ? woData.data : [];
   const notifications = notifData?.success ? notifData.data : [];
+
+  // Hitung notifikasi yang belum digenerate jadi work order
+  const pendingWorkOrdersFromNotif = notifications.filter((n: any) => !n.work_order_id).length;
 
   const activeWorkOrders = workOrders.filter((wo: any) => wo.status !== 'Completed').length;
   const pendingTasks = workOrders.filter((wo: any) => wo.status === 'Pending').length;
@@ -150,9 +154,17 @@ export default function ManagementSystemPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <button className="relative p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+              <button 
+                onClick={() => setActiveTab('notifications')}
+                className="relative p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                title={`${pendingWorkOrdersFromNotif} notification(s) need Work Order`}
+              >
                 <Bell size={18} />
-                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                {pendingWorkOrdersFromNotif > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 border-white shadow-sm">
+                    {pendingWorkOrdersFromNotif > 99 ? '99+' : pendingWorkOrdersFromNotif}
+                  </span>
+                )}
               </button>
               <div className="flex items-center gap-1.5 bg-gray-100 px-3 py-1.5 rounded-lg">
                 {/* <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-xs">
@@ -328,6 +340,9 @@ export default function ManagementSystemPage() {
         {activeTab === 'schedule' && <MaintenanceSchedule />}
         {activeTab === 'notifications' && <NotificationPanel />}
       </main>
+
+      {/* Realtime Notification Toasts — always mounted, shown outside tabs */}
+      <RealtimeNotifToast onViewNotifications={() => setActiveTab('notifications')} />
 
       <style jsx global>{`
         .scrollbar-hide::-webkit-scrollbar {

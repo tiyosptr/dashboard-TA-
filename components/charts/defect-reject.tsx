@@ -156,10 +156,6 @@ function DefectRejectBarChart({
                         <p className="text-[8px] text-slate-400 -mt-0.5">Auto-scrolling view</p>
                     </div>
                 </div>
-                <div className={`stat-badge ${stats.trend < 0 ? 'stat-badge-success' : 'stat-badge-danger'}`}>
-                    {stats.trend < 0 ? <TrendingDown size={10} /> : <TrendingUp size={10} />}
-                    {Math.abs(stats.trend)}%
-                </div>
             </div>
 
             {/* Stats Row */}

@@ -91,6 +91,8 @@ export default function MaintenanceHistory() {
 
   const grandTotalDowntimeSec = downtimeReport.reduce((s, l) => s + l.totalDowntimeSec, 0);
   const grandTotalMaintSec = downtimeReport.reduce((s, l) => s + l.totalMaintSec, 0);
+  const grandTotalDowntimeCount = downtimeReport.reduce((s, l) => s + l.downtimeCount, 0);
+  const grandTotalMaintCount = downtimeReport.reduce((s, l) => s + l.maintCount, 0);
 
   const filteredWo = (woHistory || []).filter((item: any) => {
     if (!searchTerm) return true;
@@ -141,60 +143,117 @@ export default function MaintenanceHistory() {
 
   return (
     <div className="space-y-6">
-      {/* ── Downtime Report — always visible ── */}
+      {/* ── Event Summary & Downtime Report — always visible ── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <TrendingDown size={15} className="text-rose-500" />
+          <Activity size={15} className="text-indigo-500" />
           <span className="text-xs font-black text-slate-600 uppercase tracking-widest">
-            Total Downtime (All Lines)
+            Event Summary (All Lines)
           </span>
         </div>
 
         {logLoading ? (
           <div className="flex items-center gap-3 py-6 px-4 bg-white rounded-2xl border border-slate-100">
             <Loader2 size={18} className="animate-spin text-rose-400" />
-            <span className="text-sm text-slate-400 font-semibold">Menghitung data downtime...</span>
+            <span className="text-sm text-slate-400 font-semibold">Calculating summary data...</span>
           </div>
         ) : downtimeReport.length === 0 ? (
           <div className="py-8 text-center bg-white rounded-2xl border border-slate-100">
-            <TrendingDown size={28} className="mx-auto text-slate-200 mb-2" />
-            <p className="text-sm text-slate-400 font-semibold">Belum ada data downtime</p>
+            <Activity size={28} className="mx-auto text-slate-200 mb-2" />
+            <p className="text-sm text-slate-400 font-semibold">No event data yet</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {downtimeReport.map((line) => (
-              <div
-                key={line.line_name}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-3"
-              >
-                {/* Line name */}
+          <div className="flex flex-col gap-4">
+            {/* Grand Totals Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Grand Total Downtime Card */}
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0">
-                    <Factory size={13} className="text-rose-500" />
+                  <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center flex-shrink-0 border border-rose-100">
+                    <TrendingDown size={14} className="text-rose-500" />
                   </div>
-                  <span className="text-xs font-black text-slate-700 truncate">{line.line_name}</span>
+                  <span className="text-sm font-black text-slate-800">Overall Total Downtime</span>
                 </div>
-
-                {/* Total Downtime — main value */}
-                <div className="bg-rose-50 rounded-xl px-3 py-2.5 border border-rose-100">
-                  <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-0.5">
-                    Total Downtime
+                <div className="bg-rose-50 rounded-xl px-4 py-3 border border-rose-100">
+                  <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-0.5">Total Time</p>
+                  <p className="text-2xl font-black text-rose-600 leading-tight">
+                    {formatDuration(grandTotalDowntimeSec)}
                   </p>
-                  <p className="text-lg font-black text-rose-600 leading-tight">
-                    {formatDuration(line.totalDowntimeSec)}
+                  <p className="text-xs font-bold text-rose-500 mt-1.5 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                    {grandTotalDowntimeCount} downtime events recorded
                   </p>
-                  <p className="text-[10px] text-rose-400 mt-0.5">{line.downtimeCount} kejadian</p>
-                </div>
-
-                {/* Maintenance secondary */}
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[10px] text-slate-400 font-semibold">Maintenance</span>
-                  <span className="text-[11px] font-bold text-blue-600">
-                    {formatDuration(line.totalMaintSec)}
-                  </span>
                 </div>
               </div>
-            ))}
+
+              {/* Grand Total Maintenance Card */}
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 border border-blue-100">
+                    <Settings size={14} className="text-blue-500" />
+                  </div>
+                  <span className="text-sm font-black text-slate-800">Overall Total Maintenance</span>
+                </div>
+                <div className="bg-blue-50 rounded-xl px-4 py-3 border border-blue-100">
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Total Time</p>
+                  <p className="text-2xl font-black text-blue-600 leading-tight">
+                    {formatDuration(grandTotalMaintSec)}
+                  </p>
+                  <p className="text-xs font-bold text-blue-500 mt-1.5 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    {grandTotalMaintCount} maintenance events recorded
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Per Line Details */}
+            <div>
+              <div className="flex items-center gap-2 mb-3 mt-2">
+                <Factory size={13} className="text-slate-400" />
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Details Per Line</p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {downtimeReport.map((line) => (
+                  <div
+                    key={line.line_name}
+                    className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col gap-3"
+                  >
+                    {/* Line name */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center flex-shrink-0">
+                        <Factory size={13} className="text-slate-500" />
+                      </div>
+                      <span className="text-xs font-black text-slate-700 truncate">{line.line_name}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      {/* Total Downtime — main value */}
+                      <div className="bg-rose-50 rounded-xl px-3 py-2.5 border border-rose-100 flex flex-col">
+                        <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-0.5">
+                          Downtime
+                        </p>
+                        <p className="text-lg font-black text-rose-600 leading-tight">
+                          {formatDuration(line.totalDowntimeSec)}
+                        </p>
+                        <p className="text-[10px] text-rose-500 mt-0.5 font-medium">{line.downtimeCount} events</p>
+                      </div>
+
+                      {/* Total Maintenance — main value */}
+                      <div className="bg-blue-50 rounded-xl px-3 py-2.5 border border-blue-100 flex flex-col">
+                        <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">
+                          Maintenance
+                        </p>
+                        <p className="text-lg font-black text-blue-600 leading-tight">
+                          {formatDuration(line.totalMaintSec)}
+                        </p>
+                        <p className="text-[10px] text-blue-500 mt-0.5 font-medium">{line.maintCount} events</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -237,48 +296,59 @@ export default function MaintenanceHistory() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-sm p-4 border border-slate-100 flex flex-wrap gap-4 items-center">
-        <div className="relative flex-1 min-w-[240px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
-            type="text"
-            placeholder={`Search ${activeTab === 'status-logs' ? 'machine logs' : 'work orders'}...`}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 transition-all font-medium"
-          />
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 px-6 py-4 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+            <Search size={16} className="text-indigo-500" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">List of {activeTab === 'status-logs' ? 'Logs' : 'Work Orders'}</h2>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {activeTab === 'status-logs' ? filteredSummaries.length : filteredWo.length} records displayed
+            </p>
+          </div>
         </div>
 
-        {activeTab === 'status-logs' && (
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+        <div className="w-full xl:w-auto flex flex-col sm:flex-row gap-3">
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200/60 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition-all min-w-[250px]">
+            <Search size={14} className="text-slate-400 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder={`Search ${activeTab === 'status-logs' ? 'machine logs' : 'work orders'}...`}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-400 outline-none"
+            />
+          </div>
+
+          {activeTab === 'status-logs' && (
             <select
               value={filterLine}
               onChange={(e) => setFilterLine(e.target.value)}
-              className="pl-9 pr-8 py-2 text-xs font-bold border border-slate-200 rounded-xl appearance-none bg-white focus:outline-none focus:ring-4 focus:ring-indigo-50 focus:border-indigo-400 text-slate-600"
+              className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
             >
               <option value="all">All Lines</option>
               {allLines.map((line: any) => (
                 <option key={line.id} value={line.name}>{line.name}</option>
               ))}
             </select>
-          </div>
-        )}
+          )}
 
-        <div className="flex gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
-          <input
-            type="date"
-            value={dateRange.start}
-            onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-            className="px-3 py-1.5 text-[11px] font-bold bg-transparent border-none focus:ring-0 outline-none text-slate-600"
-          />
-          <span className="text-slate-300 self-center">|</span>
-          <input
-            type="date"
-            value={dateRange.end}
-            onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-            className="px-3 py-1.5 text-[11px] font-bold bg-transparent border-none focus:ring-0 outline-none text-slate-600"
-          />
+          <div className="flex gap-2 items-center px-4 py-2 bg-slate-50 rounded-xl border border-slate-200/60 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+            <input
+              type="date"
+              value={dateRange.start}
+              onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+              className="bg-transparent border-none focus:ring-0 outline-none text-sm font-semibold text-slate-700 w-[120px]"
+            />
+            <span className="text-slate-400 font-bold">-</span>
+            <input
+              type="date"
+              value={dateRange.end}
+              onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+              className="bg-transparent border-none focus:ring-0 outline-none text-sm font-semibold text-slate-700 w-[120px]"
+            />
+          </div>
         </div>
       </div>
 

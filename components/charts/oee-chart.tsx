@@ -128,15 +128,12 @@ function OEEChart({
             </div>
 
             <div className="flex-shrink-0 mb-1">
-                <div className={`text-xl font-black ${getOEEColor(oeeValue)} tracking-tight`}>{oeeValue.toFixed(2)}%</div>
+                <div className={`text-xl font-black ${getOEEColor(oeeValue)} tracking-tight`}>{oeeValue.toFixed(1)}%</div>
                 <div className="text-[9px] text-slate-400 font-medium">Overall Equipment Effectiveness</div>
             </div>
 
             <div className="flex-1 flex items-center justify-center relative min-h-0">
                 <Doughnut data={chartDataConfig} options={options} plugins={[percentagePlugin]} />
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className={`text-sm font-black ${getOEEColor(oeeValue)}`}>{oeeValue.toFixed(1)}%</div>
-                </div>
             </div>
 
             <div className="flex-shrink-0 mt-1.5 space-y-1">

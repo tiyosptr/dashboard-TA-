@@ -9,6 +9,7 @@ import WorkOrderCompleteForm from './work-order-complete-form';
 import { WorkOrder, WorkOrderStatus } from '@/types';
 import { supabase } from '@/lib/supabase/supabase';
 import useSWR from 'swr';
+import { toast } from 'react-hot-toast';
 
 function LiveWODuration({ startTime, status }: { startTime: string; status: string }) {
   const [elapsed, setElapsed] = useState(0);
@@ -150,6 +151,9 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
               body: JSON.stringify({ machine_id: targetMachineId, new_status: 'active' })
             }).catch(err => console.error('[WO List] Failed to reactivate machine:', err));
           }
+          toast.success('Work order completed! Data successfully saved.', { duration: 4000 });
+        } else {
+          toast.success(`Status successfully changed to ${newStatus}`);
         }
 
         // Force SWR to mutate
@@ -164,9 +168,12 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
         }
         
         setCompletingWo(null);
+      } else {
+        toast.error(result.error || 'Failed to update work order');
       }
     } catch (error) {
       console.error('Error updating status:', error);
+      toast.error('An error occurred. Please try again.');
     }
   };
 
@@ -525,7 +532,7 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
             </div>
             <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-400 border-[3px] border-white animate-bounce" />
           </div>
-          <p className="text-slate-500 font-bold tracking-wide">Menyiapkan Work Orders...</p>
+          <p className="text-slate-500 font-bold tracking-wide">Preparing Work Orders...</p>
         </div>
       </div>
     );
@@ -567,14 +574,6 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
                 <LayoutGrid size={14} />
               </button>
             </div>
-
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-purple-700 rounded-lg hover:bg-purple-50 transition-all font-bold shadow-md text-sm"
-            >
-              <Plus size={16} />
-              New Work Order
-            </button>
           </div>
         </div>
       </div>
@@ -599,23 +598,35 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-md p-3 border border-gray-200">
-        <div className="flex flex-col lg:flex-row gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+            <Search size={16} className="text-indigo-500" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-800">Work Orders List</h2>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {filteredWorkOrders.length} of {statusCounts.all} work orders displayed
+            </p>
+          </div>
+        </div>
+
+        <div className="w-full sm:w-auto flex flex-col sm:flex-row gap-3">
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 rounded-xl border border-slate-200/60 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition-all min-w-[250px]">
+            <Search size={14} className="text-slate-400 flex-shrink-0" />
             <input
               type="text"
               placeholder="Search by WO code, machine, or description..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+              className="flex-1 bg-transparent text-sm font-semibold text-slate-700 placeholder:text-slate-400 outline-none"
             />
           </div>
 
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-medium cursor-pointer transition-all"
+            className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
           >
             <option value="all">All Status</option>
             <option value="Pending">Pending</option>
@@ -627,7 +638,7 @@ export default function WorkOrderList({ defaultWoId }: WorkOrderListProps = {}) 
           <select
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value)}
-            className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent font-medium cursor-pointer transition-all"
+            className="w-full sm:w-auto min-w-[160px] px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500/20 appearance-none text-slate-700 bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%207.5L10%2012.5L15%207.5%22%20stroke%3D%22%2364748B%22%20stroke-width%3D%221.7%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-[position:right_12px_center] bg-no-repeat pr-10 hover:border-indigo-300 transition-all cursor-pointer"
           >
             <option value="all">All Priority</option>
             <option value="Critical">Critical</option>

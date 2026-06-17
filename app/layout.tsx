@@ -28,7 +28,42 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="http://localhost:3000" />
       </head>
       <body className={`${inter.className} antialiased`} suppressHydrationWarning>
-        <Toaster position="top-center" />
+        <Toaster
+          position="bottom-right"
+          containerStyle={{ zIndex: 99999 }}
+          toastOptions={{
+            duration: 4000,
+            style: {
+              fontSize: '14px',
+              fontWeight: '600',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+            },
+            success: {
+              style: {
+                background: '#f0fdf4',
+                color: '#15803d',
+                border: '1px solid #bbf7d0',
+              },
+              iconTheme: {
+                primary: '#16a34a',
+                secondary: '#f0fdf4',
+              },
+            },
+            error: {
+              style: {
+                background: '#fef2f2',
+                color: '#b91c1c',
+                border: '1px solid #fecaca',
+              },
+              iconTheme: {
+                primary: '#dc2626',
+                secondary: '#fef2f2',
+              },
+            },
+          }}
+        />
         {children}
       </body>
     </html>

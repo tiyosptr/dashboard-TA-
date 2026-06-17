@@ -163,10 +163,9 @@ function ActualOutput({
     const hourlyTarget = useMemo(() => {
         const record = hourlyData.find(d => d.target_output && d.target_output > 0);
         const dailyTarget = record ? Number(record.target_output) : 1000;
-        // Divide by actual shift hours (not hardcoded 10)
-        const shiftHours = hourSlots.length || 8;
-        return Math.round(dailyTarget / shiftHours);
-    }, [hourlyData, hourSlots.length]);
+        // Divide by 10 to get 100 target per hour (1000 / 10 = 100)
+        return Math.round(dailyTarget / 10);
+    }, [hourlyData]);
 
 
     const totalGood = summary?.totalOutput ?? outputByHour.reduce((a, b) => a + b, 0);
@@ -432,10 +431,6 @@ function ActualOutput({
                             <span className="text-[9px] font-bold text-indigo-600">{shiftLabel}</span>
                         </div>
                     )}
-                    <div className="stat-badge stat-badge-success">
-                        <TrendingUp size={9} />
-                        {yieldRate.toFixed(1)}% yield
-                    </div>
                 </div>
             </div>
 

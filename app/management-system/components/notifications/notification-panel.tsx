@@ -22,6 +22,7 @@ import { Notification, Technician } from '@/types';
 import { toast } from 'react-hot-toast';
 import JsonDataDisplay from '@/app/components/ui/JsonDataDisplay';
 import NotificationDetail from './notification-detail';
+import { mutate } from 'swr';
 
 interface TechnicianModalProps {
   isOpen: boolean;
@@ -288,6 +289,7 @@ export default function NotificationsPage() {
         body: JSON.stringify({ action: 'mark_read' }),
       });
       loadNotifications(false);
+      mutate('/api/notifications?filter=all');
     } catch (error) {
       console.error('Error marking as read:', error);
     }
@@ -307,6 +309,7 @@ export default function NotificationsPage() {
       });
 
       loadNotifications(false);
+      mutate('/api/notifications?filter=all');
 
       // Show confirmation
       if (notification) {
@@ -355,6 +358,10 @@ export default function NotificationsPage() {
         prev.filter((n) => n.id !== notifId)
       );
 
+      // Sinkronisasi SWR state di page.tsx agar badge lonceng langsung update
+      mutate('/api/notifications?filter=all');
+      mutate('/api/work-orders');
+
       // Close modal
       setShowTechnicianModal(false);
       setSelectedNotificationId(null);
@@ -391,6 +398,7 @@ export default function NotificationsPage() {
       );
 
       loadNotifications(false);
+      mutate('/api/notifications?filter=all');
     } catch (error) {
       console.error('Error marking all as read:', error);
     }
@@ -406,6 +414,7 @@ export default function NotificationsPage() {
 
       toast.success('Notification deleted');
       loadNotifications(false);
+      mutate('/api/notifications?filter=all');
     } catch (error) {
       console.error('Error deleting notification:', error);
       toast.error('Failed to delete notification');

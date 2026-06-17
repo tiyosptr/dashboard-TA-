@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable React strict mode for better development experience
-  reactStrictMode: true,
+  // Disabled strict mode to prevent double-invoke of useEffect (which causes WebSocket errors in dev)
+  reactStrictMode: false,
 
   // Optimize images
   images: {

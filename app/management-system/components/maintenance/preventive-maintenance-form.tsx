@@ -117,6 +117,7 @@ export default function PreventiveMaintenanceForm({ schedule, onClose, onSuccess
       
       // Global revalidation for all machine-related data
       await swrMutate('/api/maintenance/scheduled');
+      await swrMutate('/api/work-orders'); // Refresh work orders list
       await swrMutate((key: any) => typeof key === 'string' && key.startsWith('/api/machines'), undefined, { revalidate: true });
       
       // Notify non-SWR components (e.g. MachineList) to refresh

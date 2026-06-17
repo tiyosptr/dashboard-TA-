@@ -461,9 +461,10 @@ export async function GET(request: NextRequest) {
                         }
                     });
 
-                const oeeFinal = Math.round(
-                    (availData.availability_pct * availData.performance_pct * availData.quality_pct) / 10000
-                );
+                // BUG-02 FIX: Gunakan rasio 0-1 (bukan persentase) untuk kalkulasi OEE,
+                // konsisten dengan saveLineAvailability() di oee_line.ts
+                const oeeRatio = availData.availability * availData.performance * availData.quality;
+                const oeeFinal = Math.round(oeeRatio * 10000) / 100; // Konversi ke persen dengan 2 desimal
 
                 console.log('[OEE Debug] availData:', {
                     availability_pct: availData.availability_pct,

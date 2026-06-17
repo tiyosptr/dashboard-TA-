@@ -496,10 +496,10 @@ export async function saveLineAvailability(
         line_id,
         shift_id: avResult.shift_id,
         line_process_id,
-        availability: avResult.availability,  // rasio 0–1
-        perfomance: avResult.performance,     // rasio 0–1 (typo db col: perfomance)
-        quality: avResult.quality,            // rasio 0–1
-        oee_line: oee_final_rounded,          // rasio 0–1 (A × P × Q) dengan presisi 4 desimal
+        availability: avResult.availability,
+        perfomance: avResult.performance,
+        quality: avResult.quality,
+        oee_line: oee_final,          // Simpan nilai asli tanpa dibulatkan untuk akurasi data
         updated_at: new Date().toISOString(),
     };
 
